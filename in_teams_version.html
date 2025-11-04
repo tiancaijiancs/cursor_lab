@@ -1,0 +1,2891 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AIA Copilot — Microsoft Teams Integration</title>
+    <meta name="color-scheme" content="light only" />
+    <!-- Tailwind Play CDN (no build step) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                50: '#fef2f2',
+                100: '#fee2e2',
+                200: '#fecaca',
+                300: '#fca5a5',
+                400: '#f87171',
+                500: '#ef4444', /* tailwind red-500 */
+                600: '#dc2626', /* tailwind red-600, main PRIMARY */
+                700: '#b91c1c',
+                800: '#991b1b',
+                900: '#7f1d1d',
+              },
+            },
+            boxShadow: {
+              soft: '0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10)',
+            },
+          },
+        },
+      };
+    </script>
+    <!-- Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      html, body { 
+        height: 100%; 
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      body { 
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; 
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #f3f4f6;
+      }
+      /* Microsoft Teams Colors */
+      .teams-purple {
+        color: #6264A7;
+      }
+      .teams-purple-bg {
+        background-color: #6264A7;
+      }
+      .teams-purple-border {
+        border-color: #6264A7;
+      }
+      .teams-nav-item {
+        transition: background-color 0.15s ease;
+      }
+      .teams-nav-item:hover {
+        background-color: #eaeaea;
+      }
+      .teams-nav-item.selected {
+        background-color: #e0e0e0;
+        border-left: 3px solid #6264A7;
+      }
+      .teams-nav-item.selected .teams-nav-label {
+        color: #6264A7;
+      }
+    </style>
+    <!-- React + ReactDOM + Babel for JSX in-browser -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useMemo, useEffect } = React;
+
+      // Mock data
+      const DEPARTMENTS = [
+        'All',
+        'Claims',
+        'Underwriting',
+        'Legal',
+        'Actuarial',
+        'Customer Support',
+        'Compliance',
+      ];
+
+      const TEMPLATE_OPTIONS = [
+        { id: 'report', name: 'Report Generation', desc: 'Generate structured reports from documents and data.' },
+        { id: 'policyqa', name: 'Policy Q&A', desc: 'Answer policy-related questions with citations.' },
+        { id: 'translation', name: 'Translation', desc: 'Translate documents and snippets across languages.' },
+        { id: 'summarization', name: 'Data Summarization', desc: 'Summarize policy clauses, claims notes, and more.' },
+      ];
+
+      const INITIAL_ASSISTANTS = [
+        {
+          id: 'a1',
+          icon: '📄',
+          name: 'Claims Report Draft Assistant',
+          department: 'Claims',
+          description: 'Drafts claim incident reports with consistent formatting.',
+          lastUsed: '2025-10-24',
+          reuseCount: 132,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.6,
+          avgResponseMs: 1200,
+          reuseRate: 0.72,
+        },
+        {
+          id: 'a2',
+          icon: '⚖️',
+          name: 'Clause Interpreter',
+          department: 'Legal',
+          description: 'Explains policy clauses and flags potential risks.',
+          lastUsed: '2025-10-29',
+          reuseCount: 89,
+          template: 'policyqa',
+          permissions: 'team',
+          satisfaction: 4.4,
+          avgResponseMs: 1400,
+          reuseRate: 0.66,
+        },
+        {
+          id: 'a3',
+          icon: '🌐',
+          name: 'Bilingual Adjuster Translator',
+          department: 'Customer Support',
+          description: 'Snappy EN↔ES translation with terminology guardrails.',
+          lastUsed: '2025-10-28',
+          reuseCount: 203,
+          template: 'translation',
+          permissions: 'public',
+          satisfaction: 4.7,
+          avgResponseMs: 900,
+          reuseRate: 0.81,
+        },
+        {
+          id: 'a4',
+          icon: '📊',
+          name: 'Data Summary Agent',
+          department: 'Analytics',
+          description: 'Summarizes large datasets and extracts key metrics.',
+          lastUsed: '2025-10-30',
+          reuseCount: 45,
+          template: 'summarization',
+          permissions: 'team',
+          satisfaction: 4.3,
+          avgResponseMs: 950,
+          reuseRate: 0.58,
+        },
+        {
+          id: 'a5',
+          icon: '🔎',
+          name: 'Learning & Research Assistant',
+          department: 'Training',
+          description: 'Helps employees learn and research insurance topics.',
+          lastUsed: '2025-10-29',
+          reuseCount: 78,
+          template: 'policyqa',
+          permissions: 'public',
+          satisfaction: 4.5,
+          avgResponseMs: 1100,
+          reuseRate: 0.65,
+        },
+        {
+          id: 'a6',
+          icon: '🗣️',
+          name: 'Speech Script Generator',
+          department: 'Sales',
+          description: 'Creates persuasive scripts for calls and presentations.',
+          lastUsed: '2025-10-28',
+          reuseCount: 92,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.4,
+          avgResponseMs: 1300,
+          reuseRate: 0.61,
+        },
+        {
+          id: 'a7',
+          icon: '📑',
+          name: 'Contract Review & Compliance',
+          department: 'Legal',
+          description: 'Reviews contracts for compliance risks and improvements.',
+          lastUsed: '2025-10-31',
+          reuseCount: 67,
+          template: 'policyqa',
+          permissions: 'team',
+          satisfaction: 4.6,
+          avgResponseMs: 1500,
+          reuseRate: 0.68,
+        },
+        {
+          id: 'a8',
+          icon: '💼',
+          name: 'Policy Underwriter Assistant',
+          department: 'Underwriting',
+          description: 'Evaluates risk factors and underwriting recommendations.',
+          lastUsed: '2025-10-27',
+          reuseCount: 124,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.5,
+          avgResponseMs: 1100,
+          reuseRate: 0.71,
+        },
+        {
+          id: 'a9',
+          icon: '📋',
+          name: 'Compliance Audit Assistant',
+          department: 'Compliance',
+          description: 'Conducts compliance audits and generates audit reports.',
+          lastUsed: '2025-10-26',
+          reuseCount: 56,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.4,
+          avgResponseMs: 1350,
+          reuseRate: 0.62,
+        },
+        {
+          id: 'a10',
+          icon: '🏥',
+          name: 'Medical Claims Reviewer',
+          department: 'Claims',
+          description: 'Reviews medical claims for accuracy and coverage.',
+          lastUsed: '2025-10-25',
+          reuseCount: 189,
+          template: 'policyqa',
+          permissions: 'team',
+          satisfaction: 4.6,
+          avgResponseMs: 1000,
+          reuseRate: 0.75,
+        },
+        {
+          id: 'a11',
+          icon: '💰',
+          name: 'Premium Calculator',
+          department: 'Actuarial',
+          description: 'Calculates insurance premiums based on risk profiles.',
+          lastUsed: '2025-10-30',
+          reuseCount: 234,
+          template: 'report',
+          permissions: 'public',
+          satisfaction: 4.5,
+          avgResponseMs: 850,
+          reuseRate: 0.82,
+        },
+        {
+          id: 'a12',
+          icon: '📞',
+          name: 'Customer Service Helper',
+          department: 'Customer Support',
+          description: 'Assists with customer inquiries and policy questions.',
+          lastUsed: '2025-10-31',
+          reuseCount: 312,
+          template: 'policyqa',
+          permissions: 'public',
+          satisfaction: 4.7,
+          avgResponseMs: 750,
+          reuseRate: 0.88,
+        },
+      ];
+
+      function classNames(...classes) {
+        return classes.filter(Boolean).join(' ');
+      }
+
+      function StatChip({ label, value, hint }) {
+        return (
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
+            <div className="text-sm text-gray-500">{label}</div>
+            <div className="text-sm font-semibold text-gray-900">{value}</div>
+            {hint && <div className="text-xs text-gray-400">{hint}</div>}
+          </div>
+        );
+      }
+
+      function Header({ onCreate, mode, setMode, selectedDepartment, setSelectedDepartment, agentMode, setAgentMode }) {
+        const MODES = [
+          { id: 'builder', label: 'My Assistants' },
+        ];
+
+        return (
+          <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+            <div className="mx-auto max-w-[1800px] px-6">
+              <div className="flex h-20 items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      setMode('home');
+                      setSelectedDepartment && setSelectedDepartment(null);
+                    }}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                  >
+                    <img src="AIA-Logo.png" alt="AIA" className="h-10 w-auto" />
+                    <div className="text-lg font-semibold text-gray-900">AIA Copilot</div>
+                  </button>
+                  <div className="flex items-center gap-2 border-l border-gray-200 pl-4">
+                    <button
+                      onClick={() => {
+                        if (setMode) setMode('home');
+                        if (setAgentMode) setAgentMode('chat');
+                        if (setSelectedDepartment) setSelectedDepartment(null);
+                      }}
+                      className={classNames(
+                        'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                        agentMode === 'chat'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      )}
+                    >
+                      Chat
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (setMode) setMode('home');
+                        if (setAgentMode) setAgentMode('personal');
+                        if (setSelectedDepartment) setSelectedDepartment(null);
+                      }}
+                      className={classNames(
+                        'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                        agentMode === 'personal'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      )}
+                    >
+                      Personal
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (setMode) setMode('home');
+                        if (setAgentMode) setAgentMode('department');
+                        // Don't auto-select department, let user choose
+                      }}
+                      className={classNames(
+                        'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                        agentMode === 'department'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      )}
+                    >
+                      Department
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setMode('builder')} className={classNames('inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-soft hover:bg-primary-700', mode === 'builder' ? 'bg-primary-600' : 'bg-primary-500')}>
+                    <span>Recent Used Assistant</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function DepartmentBar({ selectedDepartment, setSelectedDepartment, setMode }) {
+        const ALL_DEPARTMENTS = [
+          { id: 'Legal & Compliance', icon: '⚖️' },
+          { id: 'Human Resources / People / Culture', icon: '👥' },
+          { id: 'Distribution & Marketing', icon: '📢' },
+          { id: 'Risk Management', icon: '⚠️' },
+          { id: 'Finance / Capital Management', icon: '💰' },
+          { id: 'Investment Management', icon: '📈' },
+          { id: 'Healthcare / Health Business', icon: '🏥' },
+          { id: 'Technology / Digital / Innovation', icon: '💻' },
+          { id: 'Agency Distribution', icon: '🏢' },
+          { id: 'Partnership Distribution', icon: '🤝' },
+          { id: 'Corporate Solutions', icon: '💼' },
+          { id: 'Operations / Life Operations', icon: '⚙️' },
+          { id: 'Strategy / Transformation', icon: '🎯' },
+          { id: 'Internal Audit', icon: '🔍' },
+          { id: 'Marketing & Products', icon: '📊' },
+          { id: 'Data Analytics & Reporting', icon: '📉' },
+          { id: 'Customer Service', icon: '📞' },
+          { id: 'Corporate Communications', icon: '📣' },
+          { id: 'Government & External Affairs', icon: '🏛️' },
+          { id: 'Sustainability / ESG', icon: '🌱' },
+          { id: 'Procurement & Administration', icon: '📋' },
+          { id: 'Learning & Development', icon: '🎓' },
+          { id: 'Product Development', icon: '🔧' },
+          { id: 'Actuarial Department', icon: '📐' },
+          { id: 'Reinsurance', icon: '🔄' },
+        ];
+
+        const [expanded, setExpanded] = React.useState(true);
+        const displayedDepartments = expanded ? ALL_DEPARTMENTS : ALL_DEPARTMENTS.slice(0, 3);
+
+        return (
+          <div className="sticky top-20 z-10 border-b border-gray-200 bg-white shadow-sm">
+            <div className="mx-auto max-w-[1400px] px-6 py-3">
+              <div className="flex items-center gap-2 overflow-x-auto lg:pl-[280px]">
+                      {displayedDepartments.map((dept) => (
+                        <button
+                          key={dept.id}
+                          onClick={() => {
+                            setSelectedDepartment && setSelectedDepartment(dept.id);
+                            setMode && setMode('home');
+                          }}
+                          className={classNames(
+                            'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap',
+                            selectedDepartment === dept.id
+                              ? 'bg-primary-600 text-white shadow-md'
+                              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-primary-300'
+                          )}
+                        >
+                          <span className="text-base">{dept.icon}</span>
+                          <span>{dept.id}</span>
+                        </button>
+                      ))}
+                {!expanded && (
+                  <button
+                    onClick={() => setExpanded(true)}
+                    className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-300 transition flex-shrink-0 whitespace-nowrap"
+                  >
+                    <span>▼</span>
+                    <span>Expand</span>
+                  </button>
+                )}
+                {expanded && (
+                  <button
+                    onClick={() => setExpanded(false)}
+                    className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-300 transition flex-shrink-0 whitespace-nowrap"
+                  >
+                    <span>▲</span>
+                    <span>Collapse</span>
+                  </button>
+                )}
+                  </div>
+            </div>
+          </div>
+        );
+      }
+
+      function DepartmentView({ department, tools, onSelectTool, onBack, setMode, setSelectedDepartment }) {
+        const DEPT_INFO = {
+          'Distribution & Marketing': { icon: '📢', name: 'Distribution & Marketing Department', desc: 'Manage marketing strategies and distribution channels' },
+          'Risk Management': { icon: '⚠️', name: 'Risk Management Department', desc: 'Analyze risks, model scenarios, and build risk reports' },
+          'Finance / Capital Management': { icon: '💰', name: 'Finance / Capital Management Department', desc: 'Manage financial resources and capital allocation' },
+          'Investment Management': { icon: '📈', name: 'Investment Management Department', desc: 'Manage investment portfolios and strategies' },
+          'Healthcare / Health Business': { icon: '🏥', name: 'Healthcare / Health Business Department', desc: 'Manage healthcare-related business operations' },
+          'Human Resources / People / Culture': { icon: '👥', name: 'Human Resources / People / Culture Department', desc: 'Manage talent acquisition, employee relations, and training' },
+          'Legal & Compliance': { icon: '⚖️', name: 'Legal & Compliance Department', desc: 'Review contracts, ensure compliance, and manage legal risks' },
+          'Technology / Digital / Innovation': { icon: '💻', name: 'Technology / Digital / Innovation Department', desc: 'Drive digital transformation and technology innovation' },
+          'Agency Distribution': { icon: '🏢', name: 'Agency Distribution Department', desc: 'Manage agency-based distribution channels' },
+          'Partnership Distribution': { icon: '🤝', name: 'Partnership Distribution Department', desc: 'Manage partnership-based distribution networks' },
+          'Corporate Solutions': { icon: '💼', name: 'Corporate Solutions Department', desc: 'Provide corporate-level solutions and services' },
+          'Operations / Life Operations': { icon: '⚙️', name: 'Operations / Life Operations Department', desc: 'Manage daily operations and life insurance operations' },
+          'Strategy / Transformation': { icon: '🎯', name: 'Strategy / Transformation Department', desc: 'Drive strategic planning and organizational transformation' },
+          'Internal Audit': { icon: '🔍', name: 'Internal Audit Department', desc: 'Conduct internal audits and compliance reviews' },
+          'Marketing & Products': { icon: '📊', name: 'Marketing & Products Department', desc: 'Develop marketing strategies and product offerings' },
+          'Data Analytics & Reporting': { icon: '📉', name: 'Data Analytics & Reporting Department', desc: 'Analyze data and generate business reports' },
+          'Customer Service': { icon: '📞', name: 'Customer Service Department', desc: 'Provide customer support and service excellence' },
+          'Corporate Communications': { icon: '📣', name: 'Corporate Communications Department', desc: 'Manage internal and external communications' },
+          'Government & External Affairs': { icon: '🏛️', name: 'Government & External Affairs Department', desc: 'Manage government relations and external affairs' },
+          'Sustainability / ESG': { icon: '🌱', name: 'Sustainability / ESG Department', desc: 'Drive sustainability initiatives and ESG compliance' },
+          'Procurement & Administration': { icon: '📋', name: 'Procurement & Administration Department', desc: 'Manage procurement processes and administrative functions' },
+          'Learning & Development': { icon: '🎓', name: 'Learning & Development Department', desc: 'Provide employee training and development programs' },
+          'Product Development': { icon: '🔧', name: 'Product Development Department', desc: 'Develop and enhance insurance products' },
+          'Actuarial Department': { icon: '📐', name: 'Actuarial Department', desc: 'Assess risk factors, evaluate applications, and set premiums' },
+          'Reinsurance': { icon: '🔄', name: 'Reinsurance Department', desc: 'Manage reinsurance operations and relationships' },
+        };
+        const deptInfo = DEPT_INFO[department] || { icon: '🏢', name: department, desc: '' };
+        const [selectedTool, setSelectedTool] = React.useState(null);
+        const [messages, setMessages] = React.useState([]);
+        const [input, setInput] = React.useState('');
+        const [imageFile, setImageFile] = React.useState(null);
+        const [file, setFile] = React.useState(null);
+        const [showAllTools, setShowAllTools] = React.useState(false);
+        const [aiStatus, setAiStatus] = React.useState(null); // For demo status
+        const [isAnimating, setIsAnimating] = React.useState(false); // For transition animation
+        const [showCursor, setShowCursor] = React.useState(false);
+        const [cursorPos, setCursorPos] = React.useState({ x: 0, y: 0 });
+        const [cursorClicking, setCursorClicking] = React.useState(false);
+        // HR Leave Request demo UI state
+        const [hrSelectedDate, setHrSelectedDate] = React.useState(null);
+        const [hrLeaveType, setHrLeaveType] = React.useState('');
+
+        const scrollRef = React.useRef(null);
+        const demoActiveRef = React.useRef(false);
+        const contractReviewButtonRef = React.useRef(null);
+        
+        // Reset conversation state when department changes
+        React.useEffect(() => {
+          setSelectedTool(null);
+          setMessages([]);
+          setInput('');
+          setImageFile(null);
+          setFile(null);
+          setShowAllTools(false);
+          setAiStatus(null);
+          demoActiveRef.current = false;
+          setIsAnimating(false);
+          setShowCursor(false);
+          setCursorClicking(false);
+          setHrSelectedDate(null);
+          setHrLeaveType('');
+        }, [department]);
+        
+        // Demo: Auto-simulate when Legal department is selected (clicked)
+        React.useEffect(() => {
+          if (department === 'Legal & Compliance' && !demoActiveRef.current && selectedTool === null) {
+            demoActiveRef.current = true;
+            
+            // Helper function to simulate cursor click
+            const simulateCursorClick = (button) => {
+              // Get button position relative to viewport (fixed positioning)
+              const rect = button.getBoundingClientRect();
+              const buttonX = rect.left + rect.width / 2;
+              const buttonY = rect.top + rect.height / 2;
+              
+              // Start from center-left of viewport
+              const startX = window.innerWidth * 0.3;
+              const startY = window.innerHeight * 0.5;
+              setCursorPos({ x: startX, y: startY });
+              setShowCursor(true);
+              
+              // Animate cursor moving to button over 1 second
+              const duration = 1000;
+              const startTime = Date.now();
+              
+              const animateCursor = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+                
+                const currentX = startX + (buttonX - startX) * eased;
+                const currentY = startY + (buttonY - startY) * eased;
+                
+                setCursorPos({ x: currentX, y: currentY });
+                
+                if (progress < 1) {
+                  requestAnimationFrame(animateCursor);
+                } else {
+                  // Cursor reached button, click it
+                  setCursorClicking(true);
+                  setTimeout(() => {
+                    setCursorClicking(false);
+                    setShowCursor(false);
+                    
+                    // After click, select the tool
+                    const contractReviewTool = tools.find(t => t.id === 'contract-review');
+                    if (contractReviewTool) {
+                      setIsAnimating(true);
+                      setTimeout(() => {
+                        setSelectedTool(contractReviewTool);
+                        setIsAnimating(false);
+                      }, 300);
+                      
+                      // Step 2: Show welcome message after 5 seconds (stay on contract review page longer)
+                      setTimeout(() => {
+                        setMessages([{
+                          id: 'welcome',
+                          role: 'assistant',
+                          text: "Hello! I'm your Contract Review Assistant. Please upload the contract document you'd like me to review, and I'll analyze it for compliance issues, potential risks, and key clauses."
+                        }]);
+                  
+                        // Step 3: Auto-upload file after another 3 seconds
+                        setTimeout(() => {
+                          const mockFile = { name: 'Service_Agreement_2024.pdf' };
+                          setFile(mockFile);
+                          
+                          // Trigger the sendMessage logic by simulating file upload
+                          setMessages(prev => [...prev, { 
+                            id: 'file' + Date.now(), 
+                            role: 'user', 
+                            type: 'file', 
+                            filename: mockFile.name 
+                          }]);
+                          
+                          // Start demo animation - add thinking steps as messages
+                          setMessages(prev => [...prev, { 
+                            id: 'think-checking-' + Date.now(), 
+                            role: 'assistant', 
+                            text: 'Checking document...' 
+                          }]);
+                          setTimeout(() => {
+                            setMessages(prev => [...prev, { 
+                              id: 'think-validating-' + Date.now(), 
+                              role: 'assistant', 
+                              text: 'Validating document format...' 
+                            }]);
+                            setTimeout(() => {
+                              setMessages(prev => [...prev, { 
+                                id: 'think-api-' + Date.now(), 
+                                role: 'assistant', 
+                                text: 'Checking 3rd party API...' 
+                              }]);
+                              setTimeout(() => {
+                                setMessages(prev => [...prev, { 
+                                  id: 'think-compliance-' + Date.now(), 
+                                  role: 'assistant', 
+                                  text: 'Analyzing compliance requirements...' 
+                                }]);
+                                setTimeout(() => {
+                                  setMessages(prev => [...prev, { 
+                                    id: 'think-knowledge-' + Date.now(), 
+                                    role: 'assistant', 
+                                    text: 'Cross-referencing with knowledge base...' 
+                                  }]);
+                                  setTimeout(() => {
+                                    setMessages(prev => [...prev, { 
+                                      id: 'think-generating-' + Date.now(), 
+                                      role: 'assistant', 
+                                      text: 'Generating report...' 
+                                    }]);
+                                    setTimeout(() => {
+                                const fullText = '**Contract Review Summary**\n\n**Document:** ' + mockFile.name + '\n\n**Key Findings:**\n- ✅ Contract structure is compliant\n- ⚠️ Clause 7.3 requires attention: Termination terms may conflict with standard policy\n- ⚠️ Clause 12.1: Liability cap is 20% higher than recommended threshold\n- ✅ All required clauses are present\n\n**Risk Assessment:** Medium\n\n**Recommendations:**\n1. Review termination clause 7.3 with legal team\n2. Negotiate liability cap in clause 12.1\n3. Document is otherwise acceptable with minor revisions';
+                                
+                                // Create streaming message
+                                const messageId = 'a' + Date.now();
+                                const reply = {
+                                  id: messageId,
+                                  role: 'assistant',
+                                  text: '',
+                                  streaming: true,
+                                };
+                                setMessages(prev => [...prev, reply]);
+                                
+                                // Stream the text
+                                streamText(
+                                  fullText,
+                                  (currentText) => {
+                                    setMessages(prev => prev.map(m => 
+                                      m.id === messageId ? { ...m, text: currentText } : m
+                                    ));
+                                  },
+                                  () => {
+                                    setMessages(prev => prev.map(m => 
+                                      m.id === messageId ? { ...m, streaming: false } : m
+                                    ));
+                                  }
+                                );
+                                    }, 1500);
+                                  }, 1500);
+                                }, 1500);
+                              }, 1500);
+                            }, 1500);
+                          }, 1500);
+                        }, 2000);
+                      }, 1000);
+                    }
+                  }, 200);
+                }
+              };
+              
+              // Start the animation
+              animateCursor();
+            };
+            
+            // Step 1: Wait 3 seconds at Legal department view, then show cursor moving to Contract Review button
+            setTimeout(() => {
+              // Find the Contract Review button element
+              const button = contractReviewButtonRef.current;
+              if (!button) {
+                // Retry after a short delay if button not found yet
+                setTimeout(() => {
+                  const retryButton = contractReviewButtonRef.current;
+                  if (!retryButton) return;
+                  simulateCursorClick(retryButton);
+                }, 500);
+                return;
+              }
+              simulateCursorClick(button);
+            }, 3000);
+          }
+        }, [department, tools, selectedTool]);
+
+        // Demo: Auto-simulate when HR department is selected (clicked)
+        React.useEffect(() => {
+          if (department === 'Human Resources / People / Culture' && !demoActiveRef.current && selectedTool === null) {
+            demoActiveRef.current = true;
+
+            // Step 1: Auto-select Leave Request tool after 1s
+            setTimeout(() => {
+              const leaveTool = tools.find(t => t.id === 'leave-request');
+              if (!leaveTool) return;
+              setIsAnimating(true);
+              setTimeout(() => {
+                setSelectedTool(leaveTool);
+                setIsAnimating(false);
+              }, 300);
+
+              // Step 2: Opening assistant message after 1.5s
+              setTimeout(() => {
+                setMessages([{
+                  id: 'hr-welcome',
+                  role: 'assistant',
+                  text: "Hi! I'm your Leave Request Assistant. Please pick a date on the calendar and choose a leave type to proceed."
+                }]);
+
+                // Step 3: Simulate user picking a date (after 2s)
+                setTimeout(() => {
+                  setHrSelectedDate('2025-11-14');
+
+                  // Step 4: Simulate user selecting Annual Leave (after 1s)
+                  setTimeout(() => {
+                    setHrLeaveType('Annual Leave');
+
+                    // Step 5: Simulate AI activity statuses - add as messages in history
+                    setMessages(prev => [...prev, { 
+                      id: 'hr-think-connecting-' + Date.now(), 
+                      role: 'assistant', 
+                      text: 'Connecting Workday API...' 
+                    }]);
+                    setTimeout(() => {
+                      setMessages(prev => [...prev, { 
+                        id: 'hr-think-checking-' + Date.now(), 
+                        role: 'assistant', 
+                        text: 'Checking remaining annual leave...' 
+                      }]);
+                      setTimeout(() => {
+                        setMessages(prev => [...prev, { 
+                          id: 'hr-think-writing-' + Date.now(), 
+                          role: 'assistant', 
+                          text: 'Writing response...' 
+                        }]);
+                        setTimeout(() => {
+                          const fullText = "Sorry, you don't have enough annual leave to complete this request. Please choose a different date or leave type, or contact HR for options.";
+
+                          const messageId = 'hr-a' + Date.now();
+                          const reply = { id: messageId, role: 'assistant', text: '', streaming: true };
+                          setMessages(prev => [...prev, reply]);
+                          streamText(fullText, (currentText) => {
+                            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, text: currentText } : m));
+                          }, () => {
+                            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, streaming: false } : m));
+                          });
+                        }, 1200);
+                      }, 1200);
+                    }, 1200);
+                  }, 1000);
+                }, 2000);
+              }, 1500);
+            }, 1000);
+          }
+        }, [department, tools, selectedTool]);
+        
+        React.useEffect(() => {
+          if (scrollRef.current) {
+            // Scroll to bottom smoothly when new messages are added
+            scrollRef.current.scrollTo({ 
+              top: scrollRef.current.scrollHeight, 
+              behavior: 'smooth' 
+            });
+          }
+        }, [messages, aiStatus]);
+
+        function sendMessage() {
+          const trimmed = input.trim();
+          if (!trimmed && !imageFile && !file) return;
+          
+          if (imageFile) {
+            setMessages(prev => [...prev, { id: 'img' + Date.now(), role: 'user', type: 'image', url: imageFile }]);
+            setImageFile(null);
+          }
+          if (file) {
+            // Demo: Special handling for Contract Review in Legal department
+            if (department === 'Legal & Compliance' && selectedTool?.id === 'contract-review') {
+              setMessages(prev => [...prev, { id: 'file' + Date.now(), role: 'user', type: 'file', filename: file.name }]);
+              setFile(null);
+              // Start demo animation - add thinking steps as messages
+              setMessages(prev => [...prev, { 
+                id: 'think-checking-' + Date.now(), 
+                role: 'assistant', 
+                text: 'Checking document...' 
+              }]);
+              setTimeout(() => {
+                setMessages(prev => [...prev, { 
+                  id: 'think-validating-' + Date.now(), 
+                  role: 'assistant', 
+                  text: 'Validating document format...' 
+                }]);
+                setTimeout(() => {
+                  setMessages(prev => [...prev, { 
+                    id: 'think-api-' + Date.now(), 
+                    role: 'assistant', 
+                    text: 'Checking 3rd party API...' 
+                  }]);
+                  setTimeout(() => {
+                    setMessages(prev => [...prev, { 
+                      id: 'think-compliance-' + Date.now(), 
+                      role: 'assistant', 
+                      text: 'Analyzing compliance requirements...' 
+                    }]);
+                    setTimeout(() => {
+                      setMessages(prev => [...prev, { 
+                        id: 'think-knowledge-' + Date.now(), 
+                        role: 'assistant', 
+                        text: 'Cross-referencing with knowledge base...' 
+                      }]);
+                      setTimeout(() => {
+                        setMessages(prev => [...prev, { 
+                          id: 'think-generating-' + Date.now(), 
+                          role: 'assistant', 
+                          text: 'Generating report...' 
+                        }]);
+                        setTimeout(() => {
+                    const fullText = '**Contract Review Summary**\n\n**Document:** ' + file.name + '\n\n**Key Findings:**\n- ✅ Contract structure is compliant\n- ⚠️ Clause 7.3 requires attention: Termination terms may conflict with standard policy\n- ⚠️ Clause 12.1: Liability cap is 20% higher than recommended threshold\n- ✅ All required clauses are present\n\n**Risk Assessment:** Medium\n\n**Recommendations:**\n1. Review termination clause 7.3 with legal team\n2. Negotiate liability cap in clause 12.1\n3. Document is otherwise acceptable with minor revisions';
+                    
+                    // Create streaming message
+                    const messageId = 'a' + Date.now();
+                    const reply = {
+                      id: messageId,
+                      role: 'assistant',
+                      text: '',
+                      streaming: true,
+                    };
+                    setMessages(prev => [...prev, reply]);
+                    
+                    // Stream the text
+                    streamText(
+                      fullText,
+                      (currentText) => {
+                        setMessages(prev => prev.map(m => 
+                          m.id === messageId ? { ...m, text: currentText } : m
+                        ));
+                      },
+                      () => {
+                        setMessages(prev => prev.map(m => 
+                          m.id === messageId ? { ...m, streaming: false } : m
+                        ));
+                      }
+                    );
+                        }, 1500);
+                      }, 1500);
+                    }, 1500);
+                  }, 1500);
+                }, 1500);
+              }, 1500);
+              return;
+            }
+            setMessages(prev => [...prev, { id: 'file' + Date.now(), role: 'user', type: 'file', filename: file.name }]);
+            setFile(null);
+          }
+          if (trimmed) {
+            setMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: trimmed }]);
+            setInput('');
+            
+            setTimeout(() => {
+              const reply = {
+                id: 'a' + Date.now(),
+                role: 'assistant',
+                text: selectedTool ? `Response from ${selectedTool.name} (simulated)` : 'Please select a tool to get started.',
+              };
+              setMessages(prev => [...prev, reply]);
+            }, 700);
+          }
+        }
+
+        // Streaming function for DepartmentView
+        function streamText(fullText, onUpdate, onComplete) {
+          const charDelay = 20;
+          const chunkSize = 2;
+          let i = 0;
+          function step() {
+            const nextI = Math.min(fullText.length, i + chunkSize);
+            const slice = fullText.slice(0, nextI);
+            onUpdate(slice);
+            i = nextI;
+            if (i < fullText.length) {
+              setTimeout(step, charDelay);
+            } else {
+              if (onComplete) onComplete();
+            }
+          }
+          setTimeout(step, charDelay);
+        }
+
+        const Bubble = ({ role, children, type, url, filename }) => (
+          <div
+            className={classNames(
+              "max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-soft",
+              role === "user"
+                ? "ml-auto bg-primary-600 text-white"
+                : "mr-auto bg-white border border-gray-200 text-gray-900"
+            )}
+          >
+            {type === 'image' && url ? (
+              <img src={url} alt="Uploaded" className="max-w-xs rounded-lg" />
+            ) : type === 'file' && filename ? (
+              <div className="flex items-center gap-3 p-2 rounded-lg bg-white/10">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-white/20 border border-white/30">
+                  <span className="text-xl">📄</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-medium">{filename}</span>
+                  <span className="text-xs opacity-80">PDF Document</span>
+                </div>
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap">{children}</div>
+            )}
+          </div>
+        );
+
+        return (
+          <div className="mx-auto max-w-[1400px] px-6 py-6">
+            <button
+              onClick={onBack}
+              className="mb-4 inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            >
+              <span>←</span>
+              <span>Back</span>
+                  </button>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[256px_1fr]">
+              <LeftSidebar
+                onSelectTool={(tool) => {
+                  // Handle AI tools selection in department context
+                  setSelectedTool(null);
+                  setMessages([]);
+                }}
+                onCreate={() => {}}
+                onOpenChat={(id) => {
+                  if(id==='new') {
+                    setSelectedTool(null);
+                    setMessages([]);
+                  } else if (id === 'contract-review-q4') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'cr1', role: 'user', text: 'Review this vendor contract for Q4 procurement.', type: 'file', filename: 'Vendor_Agreement_Q4_2024.pdf' },
+                      { id: 'cr2', role: 'assistant', text: '**Contract Review Summary**\n\n**Document:** Vendor_Agreement_Q4_2024.pdf\n\n**Key Findings:**\n- ✅ All clauses comply with company policy\n- ⚠️ Payment terms: Net 45 is acceptable but recommend Net 30\n- ✅ Liability coverage meets requirements\n- ✅ Data protection clause is comprehensive\n\n**Risk Assessment:** Low\n\n**Recommendations:**\n1. Suggest negotiating payment terms to Net 30 for better cash flow\n2. Contract is otherwise ready for signature' }
+                    ]);
+                  } else if (id === 'leave-request-nov') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'lr1', role: 'user', text: 'I need to request 3 days of personal leave in November for family event.' },
+                      { id: 'lr2', role: 'assistant', text: '**Leave Request Submitted**\n\n**Details:**\n- Type: Personal Leave\n- Duration: 3 days\n- Month: November 2024\n- Reason: Family event\n\n**Status:** Pending Manager Approval\n\n**Your Leave Balance:**\n- Personal Days Remaining: 15\n- Annual Leave Remaining: 12\n\n**Next Steps:**\nYour request has been forwarded to your manager for approval. You will receive a notification once approved.' }
+                    ]);
+                  } else if (id === 'premium-calculation') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'pc1', role: 'user', text: 'Calculate premium for life insurance policy: Age 35, non-smoker, $500K coverage, 20-year term.' },
+                      { id: 'pc2', role: 'assistant', text: '**Premium Calculation**\n\n**Policy Details:**\n- Coverage Amount: $500,000\n- Term: 20 years\n- Age: 35\n- Smoking Status: Non-smoker\n\n**Calculated Premium:**\n- Monthly: $42.50\n- Annual: $510.00\n\n**Breakdown:**\n- Base Premium: $38.00/month\n- Risk Adjustment: +$4.50/month (favorable due to non-smoker status)\n\n**Discounts Applied:**\n- Healthy Lifestyle: 5%\n- Auto-pay: 2%\n\n**Note:** Final premium may vary based on medical underwriting results.' }
+                    ]);
+                  } else if (id === 'compliance-audit') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'ca1', role: 'user', text: 'Run compliance audit for Q3 2024 customer data handling procedures.' },
+                      { id: 'ca2', role: 'assistant', text: '**Compliance Audit Report - Q3 2024**\n\n**Audit Scope:** Customer Data Handling Procedures\n\n**Findings:**\n- ✅ GDPR compliance: All procedures meet requirements\n- ✅ Data encryption: Implemented correctly\n- ⚠️ Data retention: Some records exceed recommended retention period\n- ✅ Access controls: Properly configured\n- ✅ Incident response: Procedures documented and tested\n\n**Risk Assessment:** Medium-Low\n\n**Recommendations:**\n1. Review and archive records older than 7 years\n2. Schedule quarterly compliance training update\n3. Update data processing agreement templates\n\n**Overall Status:** Compliant with minor improvements needed' }
+                    ]);
+                  } else if (id === 'policy-translation') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'pt1', role: 'user', text: 'Translate our customer service policy document to Spanish and French.', type: 'file', filename: 'Customer_Service_Policy_EN.pdf' },
+                      { id: 'pt2', role: 'assistant', text: '**Translation Complete**\n\n**Source:** Customer_Service_Policy_EN.pdf\n**Target Languages:** Spanish, French\n\n**Translations Generated:**\n- ✅ Customer_Service_Policy_ES.pdf (Spanish)\n- ✅ Customer_Service_Policy_FR.pdf (French)\n\n**Translation Quality:** High\n- Legal terminology verified\n- Cultural context adapted\n- Formatting preserved\n\n**Review Status:**\nBoth translations have been reviewed and are ready for distribution. All technical terms and policy numbers have been accurately translated.' }
+                    ]);
+                  } else alert(`Open ${id} (simulated)`);
+                }}
+                onOpenMyAssistant={() => setMode && setMode('builder')}
+                onHelp={() => alert("Help Center (simulated)")}
+                showHistoryOnly={true}
+                selectedDepartment={department}
+                setSelectedDepartment={setSelectedDepartment}
+                setMode={setMode}
+                agentMode="department"
+              />
+              <div className="flex h-[70vh] flex-col rounded-2xl border border-gray-200 bg-gray-50 shadow-soft">
+              <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 rounded-t-2xl flex-shrink-0">
+                <div className="text-sm font-semibold text-gray-900">{deptInfo.name}</div>
+                <div className="flex items-center gap-2"></div>
+                </div>
+              <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 relative min-h-0">
+                {showCursor && (
+                  <div
+                    className="fixed pointer-events-none z-50 transition-transform duration-150"
+                    style={{
+                      left: `${cursorPos.x}px`,
+                      top: `${cursorPos.y}px`,
+                      transform: cursorClicking ? 'translate(-50%, -50%) scale(0.8)' : 'translate(-50%, -50%) scale(1)',
+                    }}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-lg">
+                      <path d="M3 3L10.07 19.97L12.58 12.58L19.97 10.07L3 3Z" fill="black" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+              </div>
+                )}
+                {selectedTool ? (
+                  <div className="space-y-6">
+                    {/* Show intro section above messages */}
+                    <div className="flex flex-col items-center justify-center text-center select-none pt-4 pb-4">
+                      <div className="mb-4 flex items-center justify-center h-16 w-16 rounded-2xl bg-primary-50 text-4xl shadow-soft">
+                        {selectedTool.icon}
+            </div>
+                      <div className="text-2xl font-bold text-gray-900 mb-2">{selectedTool.name}</div>
+                      <div className="mb-2 text-sm text-gray-600 max-w-md">{selectedTool.desc}</div>
+                    </div>
+
+                    {/* Special UI: Leave Request calendar and leave type as a user-side panel under messages */}
+                    {selectedTool.id === 'leave-request' && (
+                      <></>
+                    )}
+                    
+                    {messages.length > 0 && (
+                      <div className="space-y-4">
+                        {/* For Leave Request: Show first message, then calendar, then rest of messages */}
+                        {selectedTool.id === 'leave-request' ? (
+                          <>
+                            {/* First assistant message (welcome) */}
+                            {messages[0] && messages[0].role === 'assistant' && (
+                              <Bubble key={messages[0].id} role={messages[0].role} type={messages[0].type} url={messages[0].url} filename={messages[0].filename}>{messages[0].text}</Bubble>
+                            )}
+                            {/* Calendar UI positioned right after first message */}
+                            <div className="ml-auto max-w-[85%] rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-soft">
+                              <div className="mb-3 text-sm font-semibold text-gray-900">Select Date</div>
+                              <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                                {['S','M','T','W','T','F','S'].map((d) => (
+                                  <div key={d} className="py-1 font-semibold text-gray-500">{d}</div>
+                                ))}
+                                {Array.from({ length: 30 }, (_, i) => i + 1).map((day) => {
+                                  const dayStr = `2025-11-${String(day).padStart(2,'0')}`;
+                                  const selected = hrSelectedDate === dayStr;
+                                  return (
+                                    <button
+                                      key={day}
+                                      onClick={() => {
+                                        setHrSelectedDate(dayStr);
+                                        setMessages(prev => [...prev, { id: 'hr-u-date-' + dayStr, role: 'user', text: `Selected date: ${dayStr}` }]);
+                                      }}
+                                      className={classNames(
+                                        'rounded-lg py-1.5',
+                                        selected ? 'bg-primary-600 text-white' : 'hover:bg-gray-100 text-gray-800'
+                                      )}
+                                    >
+                                      {day}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-4 text-sm font-semibold text-gray-900">Leave Type</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {['Annual Leave','Personal Leave','Sick Leave','Compassionate Leave'].map((t) => (
+                                  <button
+                                    key={t}
+                                    onClick={() => {
+                                      setHrLeaveType(t);
+                                      setMessages(prev => [...prev, { id: 'hr-u-type-' + t, role: 'user', text: `Leave type: ${t}` }]);
+                                    }}
+                                    className={classNames(
+                                      'rounded-lg border px-3 py-1.5 text-xs',
+                                      hrLeaveType === t ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
+                                    )}
+                                  >{t}</button>
+                                ))}
+                              </div>
+                              <div className="mt-3 text-xs text-gray-500">
+                                {hrSelectedDate ? `Selected date: ${hrSelectedDate}` : 'No date selected'}
+                                {hrLeaveType ? ` • Type: ${hrLeaveType}` : ''}
+                              </div>
+                            </div>
+                            {/* Rest of messages after calendar */}
+                            {messages.slice(1).map((m) => (
+                              <Bubble key={m.id} role={m.role} type={m.type} url={m.url} filename={m.filename}>{m.text}</Bubble>
+                            ))}
+                          </>
+                        ) : (
+                          /* For other tools: show all messages normally */
+                          messages.map((m) => (
+                            <Bubble key={m.id} role={m.role} type={m.type} url={m.url} filename={m.filename}>{m.text}</Bubble>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center select-none py-8">
+                    {/* Department Introduction Section */}
+                    <div className="mb-8 flex flex-col items-center">
+                      <div className="mb-6 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 text-5xl shadow-soft">
+                        {deptInfo.icon}
+                      </div>
+                      <div className="text-3xl font-bold text-gray-900 mb-2">{deptInfo.name}</div>
+                      <div className="mb-4 text-base text-gray-600 max-w-2xl">{deptInfo.desc}</div>
+                    </div>
+                    
+                    {/* Smaller Tool Buttons Grid */}
+                    <div className="mx-auto w-full max-w-4xl">
+                      <div className="text-lg font-semibold text-gray-800 mb-4">Suggested agents</div>
+                      <div className="grid grid-cols-4 gap-3 relative">
+                        {(showAllTools ? tools : tools.slice(0, 4)).map((tool) => (
+                          <button
+                            key={tool.id}
+                            ref={tool.id === 'contract-review' ? contractReviewButtonRef : null}
+                            onClick={() => {
+                              setIsAnimating(true);
+                              setTimeout(() => {
+                                setSelectedTool(tool);
+                                setIsAnimating(false);
+                              }, 300);
+                            }}
+                            className="group flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-center shadow-soft transition hover:border-primary-300 hover:shadow-md"
+                          >
+                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-50 text-2xl group-hover:bg-primary-100 transition">
+                              {tool.icon}
+                            </div>
+                            <div className="w-full">
+                              <div className="text-sm font-semibold text-gray-900 mb-1 line-clamp-1">{tool.name}</div>
+                              <div className="text-xs text-gray-500 leading-tight line-clamp-2">{tool.desc}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      {tools.length > 4 && !showAllTools && (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            onClick={() => setShowAllTools(true)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 transition"
+                          >
+                            <span>More</span>
+                            <span>▼</span>
+                          </button>
+                        </div>
+                      )}
+                      {showAllTools && tools.length > 4 && (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            onClick={() => setShowAllTools(false)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                          >
+                            <span>Show Less</span>
+                            <span>▲</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-gray-200 bg-white px-4 py-3 rounded-b-2xl flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                    placeholder={`Message ${deptInfo.name}...`}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-primary-300 focus:outline-none focus:ring-1 focus:ring-primary-200"
+                  />
+                  <label className="cursor-pointer rounded-lg border border-gray-200 bg-white p-2 hover:bg-gray-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const url = URL.createObjectURL(f);
+                        setImageFile(url);
+                      }}
+                    />
+                    <span className="text-lg">🖼️</span>
+                  </label>
+                  <label className="cursor-pointer rounded-lg border border-gray-200 bg-white p-2 hover:bg-gray-50">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setFile({ name: f.name });
+                      }}
+                    />
+                    <span className="text-lg">📎</span>
+                  </label>
+                  <button
+                    onClick={sendMessage}
+                    className="rounded-lg bg-primary-600 px-6 py-2 text-sm font-semibold text-white shadow-soft hover:bg-primary-700"
+                  >
+                    Send
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-gray-400">AI outputs are simulated in this demo.</div>
+              </div>
+            </div>
+            </div>
+          </div>
+        );
+      }
+
+      function OverviewPanel({ assistants, search, setSearch, department, setDepartment }) {
+        const totalReuse = assistants.reduce((acc, a) => acc + a.reuseCount, 0);
+        const avgResp = Math.round(assistants.reduce((acc, a) => acc + a.avgResponseMs, 0) / Math.max(assistants.length, 1));
+        const avgSat = (assistants.reduce((acc, a) => acc + a.satisfaction, 0) / Math.max(assistants.length, 1)).toFixed(2);
+
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+            <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-base font-semibold text-gray-900">Assistant Overview</div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative">
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search assistants..."
+                    className="w-full rounded-lg border-gray-200 bg-white pl-9 pr-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                  />
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
+                </div>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                >
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <StatChip label="Total Assistants" value={assistants.length} />
+              <StatChip label="Total Reuse" value={totalReuse} />
+              <StatChip label="Avg Response" value={`${avgResp} ms`} hint={`Avg Satisfaction ${avgSat}/5`} />
+            </div>
+          </div>
+        );
+      }
+
+      function AssistantCard({ a, onRun, onShare, onEdit, onLogs }) {
+        return (
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-soft transition hover:shadow-md">
+            <div className="flex items-start gap-3">
+              {/* Avatar/Icon on left */}
+              <div className="flex-shrink-0">
+                {a.avatarUrl ? (
+                  <img src={a.avatarUrl} alt={a.name} className="h-14 w-14 rounded-xl object-cover border border-gray-200" />
+                ) : (
+                  <div className="grid h-14 w-14 place-items-center rounded-xl bg-primary-100 text-2xl border border-gray-200">{a.icon}</div>
+                )}
+                </div>
+              {/* Main content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between mb-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base font-semibold text-gray-900 truncate">{a.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{a.description}</div>
+              </div>
+                  <span className="ml-2 rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-medium text-primary-600 whitespace-nowrap">{a.permissions === 'public' ? 'Public' : a.permissions === 'team' ? 'Team' : 'Private'}</span>
+            </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-xs text-gray-400">From {a.department}</div>
+                  <div className="flex items-center gap-3 text-gray-400">
+                    <span className="flex items-center gap-1 text-xs">
+                      <span>👁️</span>
+                      <span>{a.reuseCount}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <span>❤️</span>
+                      <span>{Math.floor(a.reuseCount * 0.3)}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <span>⭐</span>
+                      <span>{Math.floor(a.satisfaction * 20)}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+              <button onClick={() => onRun(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Run</button>
+              <button onClick={() => onShare(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Share</button>
+              <button onClick={() => onEdit(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Edit</button>
+              <button onClick={() => onLogs(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Logs</button>
+            </div>
+          </div>
+        );
+      }
+
+      function CardGrid({ assistants, onRun, onShare, onEdit, onLogs }) {
+        if (assistants.length === 0) {
+          return (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
+              No assistants found. Try adjusting filters or create a new one.
+            </div>
+          );
+        }
+        return (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {assistants.map((a) => (
+              <AssistantCard key={a.id} a={a} onRun={onRun} onShare={onShare} onEdit={onEdit} onLogs={onLogs} />
+            ))}
+          </div>
+        );
+      }
+
+      function AnalyticsPanel({ selected }) {
+        const reuseRate = selected?.reuseRate ?? 0.74;
+        const avgResponseMs = selected?.avgResponseMs ?? 1100;
+        const satisfaction = selected?.satisfaction ?? 4.5;
+        return (
+          <div className="sticky top-20 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+            <div className="text-base font-semibold text-gray-900">Performance</div>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-lg bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Reuse Rate</div>
+                <div className="mt-1 flex items-end justify-between">
+                  <div className="text-xl font-semibold text-gray-900">{Math.round(reuseRate * 100)}%</div>
+                  <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+                    <div className="h-2 bg-primary-500" style={{ width: `${Math.min(100, Math.round(reuseRate * 100))}%` }}></div>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Average Response Time</div>
+                <div className="mt-1 text-xl font-semibold text-gray-900">{avgResponseMs} ms</div>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Satisfaction Score</div>
+                <div className="mt-1 text-xl font-semibold text-gray-900">{satisfaction.toFixed(1)} / 5</div>
+              </div>
+              <div className="rounded-lg border border-gray-100 p-3 text-xs text-gray-500">
+                Analytics reflect internal usage. For deep-dive, open View Logs.
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function Modal({ open, onClose, title, children }) {
+        if (!open) return null;
+        return (
+          <div className="fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/20" onClick={onClose}></div>
+            <div className="absolute inset-0 flex items-start justify-center overflow-auto p-4 sm:p-6">
+              <div className="mt-10 w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-base font-semibold text-gray-900">{title}</div>
+                  <button onClick={onClose} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm hover:bg-gray-50">Close</button>
+                </div>
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function LeftSidebar({ onCreate, onSelectTool, onOpenChat, onOpenMyAssistant, onHelp, selectedToolId, showHistoryOnly = false, selectedDepartment, setSelectedDepartment, setMode, agentMode }) {
+        const SectionTitle = ({ children }) => (
+          <div className="mt-3 mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{children}</div>
+        );
+        const Item = ({ children, onClick, indent = false, active = false }) => {
+          const contentClass = active ? 'text-primary-700 font-medium' : 'text-gray-800';
+          return (
+            <button
+              type="button"
+              onClick={onClick || (() => {})}
+              className={classNames(
+                'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm',
+                indent && 'pl-6',
+                active ? 'bg-primary-50 text-primary-700 border border-primary-200' : 'hover:bg-gray-50 text-gray-800'
+              )}
+            >
+              {typeof children === 'string' ? (
+                <span className={contentClass}>{children}</span>
+              ) : (
+                children
+              )}
+            </button>
+          );
+        };
+        
+        const ALL_DEPARTMENTS = [
+          { id: 'Legal & Compliance', icon: '⚖️' },
+          { id: 'Human Resources / People / Culture', icon: '👥' },
+          { id: 'Distribution & Marketing', icon: '📢' },
+          { id: 'Risk Management', icon: '⚠️' },
+          { id: 'Finance / Capital Management', icon: '💰' },
+          { id: 'Investment Management', icon: '📈' },
+          { id: 'Healthcare / Health Business', icon: '🏥' },
+          { id: 'Technology / Digital / Innovation', icon: '💻' },
+          { id: 'Agency Distribution', icon: '🏢' },
+          { id: 'Partnership Distribution', icon: '🤝' },
+          { id: 'Corporate Solutions', icon: '💼' },
+          { id: 'Operations / Life Operations', icon: '⚙️' },
+          { id: 'Strategy / Transformation', icon: '🎯' },
+          { id: 'Internal Audit', icon: '🔍' },
+          { id: 'Marketing & Products', icon: '📊' },
+          { id: 'Data Analytics & Reporting', icon: '📉' },
+          { id: 'Customer Service', icon: '📞' },
+          { id: 'Corporate Communications', icon: '📣' },
+          { id: 'Government & External Affairs', icon: '🏛️' },
+          { id: 'Sustainability / ESG', icon: '🌱' },
+          { id: 'Procurement & Administration', icon: '📋' },
+          { id: 'Learning & Development', icon: '🎓' },
+          { id: 'Product Development', icon: '🔧' },
+          { id: 'Actuarial Department', icon: '📐' },
+          { id: 'Reinsurance', icon: '🔄' },
+        ];
+        
+        const [expanded, setExpanded] = React.useState(false);
+        const displayedDepartments = ALL_DEPARTMENTS.slice(0, 3);
+        
+        return (
+          <div className="hidden md:flex md:w-64 md:flex-col md:gap-3 relative">
+            <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-soft">
+              {agentMode === 'chat' ? (
+                <>
+              <button
+                    onClick={() => onOpenChat && onOpenChat('new')}
+                    className="w-full flex items-center gap-2 rounded-lg bg-primary-600 text-white text-sm py-2 px-3 mb-2 shadow-soft hover:bg-primary-700 transition focus:outline-none focus:ring-2 focus:ring-primary-300"
+              >
+                    <span className="inline-block text-base">＋</span>
+                    <span>New Chat</span>
+              </button>
+                  <SectionTitle>History</SectionTitle>
+                  <Item indent onClick={() => onOpenChat('chat-1')}>Claim Review Request</Item>
+                  <Item indent onClick={() => onOpenChat('chat-2')}>Document Translation</Item>
+                  <Item indent onClick={() => onOpenChat('contract-review-q4')}>Q4 Contract Review</Item>
+                  <Item indent onClick={() => onOpenChat('leave-request-nov')}>Leave Request - Nov</Item>
+                  <Item indent onClick={() => onOpenChat('premium-calculation')}>Premium Calculation</Item>
+                  <Item indent onClick={() => onOpenChat('compliance-audit')}>Compliance Audit</Item>
+                  <Item indent onClick={() => onOpenChat('policy-translation')}>Policy Translation</Item>
+              <SectionTitle>AI tools</SectionTitle>
+                  <Item indent active={selectedToolId === 'contract-review'} onClick={() => onSelectTool({ id: 'contract-review', name: 'Contract Review & Compliance Check' })}>Contract Review & Compliance Check</Item>
+                  <Item indent active={selectedToolId === 'data-summary'} onClick={() => onSelectTool({ id: 'data-summary', name: 'Data Summary Agent' })}>Data Summary Agent</Item>
+                  <Item indent active={selectedToolId === 'learning-research'} onClick={() => onSelectTool({ id: 'learning-research', name: 'Learning & Research Assistant' })}>Learning & Research Assistant</Item>
+                  <Item indent active={selectedToolId === 'multilingual-translation'} onClick={() => onSelectTool({ id: 'multilingual-translation', name: 'Multilingual Translation Agent' })}>Multilingual Translation Agent</Item>
+                  <Item indent active={selectedToolId === 'speech-script'} onClick={() => onSelectTool({ id: 'speech-script', name: 'Speech Script Generator' })}>Speech Script Generator</Item>
+                </>
+              ) : showHistoryOnly ? (
+                <>
+                  <SectionTitle>Departments</SectionTitle>
+                  <Item 
+                    indent 
+                    active={selectedDepartment === 'Legal & Compliance'}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setSelectedDepartment && setSelectedDepartment('Legal & Compliance');
+                      setMode && setMode('home');
+                    }}
+                  >
+                    <span className="text-base">⚖️</span>
+                    <span className={selectedDepartment === 'Legal & Compliance' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Legal & Compliance</span>
+                  </Item>
+                  <Item 
+                    indent 
+                    active={selectedDepartment === 'Human Resources / People / Culture'}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setSelectedDepartment && setSelectedDepartment('Human Resources / People / Culture');
+                      setMode && setMode('home');
+                    }}
+                  >
+                    <span className="text-base">👥</span>
+                    <span className={selectedDepartment === 'Human Resources / People / Culture' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Human Resources / People / Culture</span>
+                  </Item>
+                  <Item 
+                    indent 
+                    active={selectedDepartment === 'Distribution & Marketing'}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setSelectedDepartment && setSelectedDepartment('Distribution & Marketing');
+                      setMode && setMode('home');
+                    }}
+                  >
+                    <span className="text-base">📢</span>
+                    <span className={selectedDepartment === 'Distribution & Marketing' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Distribution & Marketing</span>
+                  </Item>
+                  {!expanded && (
+                    <Item 
+                      indent 
+                      onClick={() => setExpanded(true)}
+                    >
+                      <span>▶</span>
+                      <span>Expand</span>
+                    </Item>
+                  )}
+                  {expanded && (
+                    <Item 
+                      indent 
+                      onClick={() => setExpanded(false)}
+                    >
+                      <span>◀</span>
+                      <span>Collapse</span>
+                    </Item>
+                  )}
+                  {expanded && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setExpanded(false)}
+                      ></div>
+                      <div className="absolute left-full ml-4 top-0 z-50 w-96 max-h-[600px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-2xl">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="text-sm font-semibold text-gray-900">All Departments</div>
+                          <button
+                            onClick={() => setExpanded(false)}
+                            className="text-gray-400 hover:text-gray-600 text-lg"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Legal & Compliance');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Legal & Compliance'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">⚖️</span>
+                            <span className={selectedDepartment === 'Legal & Compliance' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Legal & Compliance</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Human Resources / People / Culture');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Human Resources / People / Culture'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">👥</span>
+                            <span className={selectedDepartment === 'Human Resources / People / Culture' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Human Resources / People / Culture</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Distribution & Marketing');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Distribution & Marketing'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📢</span>
+                            <span className={selectedDepartment === 'Distribution & Marketing' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Distribution & Marketing</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Risk Management');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Risk Management'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">⚠️</span>
+                            <span className={selectedDepartment === 'Risk Management' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Risk Management</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Finance / Capital Management');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Finance / Capital Management'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">💰</span>
+                            <span className={selectedDepartment === 'Finance / Capital Management' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Finance / Capital Management</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Investment Management');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Investment Management'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📈</span>
+                            <span className={selectedDepartment === 'Investment Management' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Investment Management</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Healthcare / Health Business');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Healthcare / Health Business'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🏥</span>
+                            <span className={selectedDepartment === 'Healthcare / Health Business' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Healthcare / Health Business</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Technology / Digital / Innovation');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Technology / Digital / Innovation'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">💻</span>
+                            <span className={selectedDepartment === 'Technology / Digital / Innovation' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Technology / Digital / Innovation</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Agency Distribution');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Agency Distribution'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🏢</span>
+                            <span className={selectedDepartment === 'Agency Distribution' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Agency Distribution</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Partnership Distribution');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Partnership Distribution'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🤝</span>
+                            <span className={selectedDepartment === 'Partnership Distribution' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Partnership Distribution</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Corporate Solutions');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Corporate Solutions'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">💼</span>
+                            <span className={selectedDepartment === 'Corporate Solutions' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Corporate Solutions</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Operations / Life Operations');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Operations / Life Operations'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">⚙️</span>
+                            <span className={selectedDepartment === 'Operations / Life Operations' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Operations / Life Operations</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Strategy / Transformation');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Strategy / Transformation'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🎯</span>
+                            <span className={selectedDepartment === 'Strategy / Transformation' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Strategy / Transformation</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Internal Audit');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Internal Audit'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🔍</span>
+                            <span className={selectedDepartment === 'Internal Audit' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Internal Audit</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Marketing & Products');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Marketing & Products'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📊</span>
+                            <span className={selectedDepartment === 'Marketing & Products' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Marketing & Products</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Data Analytics & Reporting');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Data Analytics & Reporting'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📉</span>
+                            <span className={selectedDepartment === 'Data Analytics & Reporting' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Data Analytics & Reporting</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Customer Service');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Customer Service'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📞</span>
+                            <span className={selectedDepartment === 'Customer Service' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Customer Service</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Corporate Communications');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Corporate Communications'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📣</span>
+                            <span className={selectedDepartment === 'Corporate Communications' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Corporate Communications</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Government & External Affairs');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Government & External Affairs'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🏛️</span>
+                            <span className={selectedDepartment === 'Government & External Affairs' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Government & External Affairs</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Sustainability / ESG');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Sustainability / ESG'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🌱</span>
+                            <span className={selectedDepartment === 'Sustainability / ESG' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Sustainability / ESG</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Procurement & Administration');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Procurement & Administration'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📋</span>
+                            <span className={selectedDepartment === 'Procurement & Administration' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Procurement & Administration</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Learning & Development');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Learning & Development'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🎓</span>
+                            <span className={selectedDepartment === 'Learning & Development' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Learning & Development</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Product Development');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Product Development'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🔧</span>
+                            <span className={selectedDepartment === 'Product Development' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Product Development</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Actuarial Department');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Actuarial Department'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">📐</span>
+                            <span className={selectedDepartment === 'Actuarial Department' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Actuarial Department</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDepartment && setSelectedDepartment('Reinsurance');
+                              setMode && setMode('home');
+                              setExpanded(false);
+                            }}
+                            className={classNames(
+                              'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedDepartment === 'Reinsurance'
+                                ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                                : 'hover:bg-gray-50 text-gray-800 border border-transparent'
+                            )}
+                          >
+                            <span className="text-base">🔄</span>
+                            <span className={selectedDepartment === 'Reinsurance' ? 'text-primary-700 font-medium' : 'text-gray-800'}>Reinsurance</span>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <SectionTitle>History</SectionTitle>
+                  <Item indent onClick={() => onOpenChat('contract-review-q4')}>Q4 Contract Review</Item>
+                  <Item indent onClick={() => onOpenChat('leave-request-nov')}>Leave Request - Nov</Item>
+                  <Item indent onClick={() => onOpenChat('premium-calculation')}>Premium Calculation</Item>
+                  <Item indent onClick={() => onOpenChat('compliance-audit')}>Compliance Audit</Item>
+                  <Item indent onClick={() => onOpenChat('policy-translation')}>Policy Translation</Item>
+                </>
+              ) : (
+                <>
+              <button
+                    onClick={() => onOpenChat && onOpenChat('new')}
+                    className="w-full flex items-center gap-2 rounded-lg bg-primary-600 text-white text-sm py-2 px-3 mb-2 shadow-soft hover:bg-primary-700 transition focus:outline-none focus:ring-2 focus:ring-primary-300"
+              >
+                    <span className="inline-block text-base">＋</span>
+                    <span>New Chat</span>
+              </button>
+                  <SectionTitle>Personal Agent</SectionTitle>
+                  <Item indent onClick={() => onOpenChat('custom-1')}>My Customize Assistant 1</Item>
+                  <Item indent onClick={() => onOpenChat('custom-2')}>My Customize Assistant 2</Item>
+                  <Item indent onClick={() => onOpenChat('custom-3')}>My Customize Assistant 3</Item>
+              <Item indent onClick={() => onCreate && onCreate()}>
+                ＋ Create Personal Assistant
+              </Item>
+              <SectionTitle>History</SectionTitle>
+                  <Item indent onClick={() => onOpenChat('chat-1')}>Claim Review Request</Item>
+                  <Item indent onClick={() => onOpenChat('chat-2')}>Document Translation</Item>
+                  <Item indent onClick={() => onOpenChat('contract-review-q4')}>Q4 Contract Review</Item>
+                  <Item indent onClick={() => onOpenChat('leave-request-nov')}>Leave Request - Nov</Item>
+                  <Item indent onClick={() => onOpenChat('premium-calculation')}>Premium Calculation</Item>
+                  <Item indent onClick={() => onOpenChat('compliance-audit')}>Compliance Audit</Item>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function HomeView({ assistants, onCreate, onSelectTool, setMode, agentMode }) {
+        // null means "My Assistant". Otherwise, {id, name, icon}
+        const [selectedTool, setSelectedTool] = React.useState(null);
+        const [messages, setMessages] = React.useState([]);
+        const [input, setInput] = React.useState("");
+        const toolSequence = [
+          { id: 'contract-review', name: 'Contract Review & Compliance Check' },
+          { id: 'data-summary', name: 'Data Summary Agent' },
+          { id: 'learning-research', name: 'Learning & Research Assistant' },
+          { id: 'multilingual-translation', name: 'Multilingual Translation Agent' },
+          { id: 'speech-script', name: 'Speech Script Generator' },
+        ];
+        const [cycling, setCycling] = React.useState(false);
+        // Auto-cycle logic
+        React.useEffect(() => {
+          // cycling disabled for this demo per requirement
+          return () => {};
+        }, [cycling]);
+
+        // Demo timers management (to cancel on user interaction)
+        const demoTimersRef = React.useRef([]);
+        function clearDemoTimers() {
+          demoTimersRef.current.forEach(clearTimeout);
+          demoTimersRef.current = [];
+        }
+
+        // Stream assistant message like ChatGPT (simulated token stream)
+        function streamAssistant(fullText, opts = {}) {
+          const { charDelay = 20, chunkSize = 2, onUpdate, onComplete } = opts;
+          let i = 0;
+          function step() {
+            const nextI = Math.min(fullText.length, i + chunkSize);
+            const slice = fullText.slice(0, nextI);
+            if (onUpdate) {
+              onUpdate(slice);
+            }
+            i = nextI;
+            if (i < fullText.length) {
+              setTimeout(step, charDelay);
+            } else {
+              if (onComplete) {
+                onComplete();
+              }
+            }
+          }
+          setTimeout(step, charDelay);
+        }
+
+        function runContractDemo() {
+          clearDemoTimers();
+          // Step 0: select tool and clear messages
+          setSelectedTool({ id: 'contract-review', name: 'Contract Review & Compliance Check' });
+          setMessages([]);
+          // Step 1: assistant opening sentence
+          demoTimersRef.current.push(setTimeout(() => {
+            setMessages(prev => [...prev, { id: 'd1', role: 'assistant', text: 'Hello, I\'m your Contract Review Assistant. Please upload a contract PDF, and I\'ll check key clauses, compliance risks, and summarize obligations.' }]);
+          }, 1200));
+          // Step 2: simulate user uploading a file and sending
+          demoTimersRef.current.push(setTimeout(() => {
+            setMessages(prev => [...prev, { id: 'd2', role: 'user', type: 'file', filename: 'Master_Service_Agreement_v3.pdf' }]);
+          }, 3000));
+          // Step 3: agent simulated response
+          demoTimersRef.current.push(setTimeout(() => {
+            streamAssistant(
+              'Summary:\n- Parties & Term: OK (2-year term, auto-renew).\n- Indemnity: Unilateral in vendor\'s favor — risk! Recommend mutualization.\n- Liability Cap: 12 months fees; carve-outs missing for data breach — risk.\n- Data Processing: Lacks SCC/processor appendix — add compliance addendum.\nNext Steps: Propose mutual indemnity, add security/data addendum, and include breach carve-outs.',
+              { charDelay: 18, chunkSize: 2 }
+            );
+          }, 5200));
+        }
+
+        // If the user interacts (clicks a tool or types in input) stop cycling
+        function interruptionHandler(innerFn) {
+          return (...args) => {
+            if (cycling) setCycling(false);
+            clearDemoTimers();
+            innerFn && innerFn(...args);
+          };
+        }
+
+        // Handlers for sidebar
+        function handleSelectTool(tool) {
+          if (cycling) setCycling(false);
+          clearDemoTimers();
+          if (tool?.id === 'contract-review') {
+            runContractDemo();
+          } else {
+          setSelectedTool(tool);
+            setMessages([]);
+          }
+        }
+        function handleNewChat() {
+          if (cycling) setCycling(false);
+          clearDemoTimers();
+          setSelectedTool(null);
+          setMessages([]);
+        }
+        function handleHistoryChat(chatId) {
+          if (cycling) setCycling(false);
+          clearDemoTimers();
+          setSelectedTool(null);
+          if (chatId === 'chat-1') {
+            setMessages([
+              { id: 'c1u', role: 'user', text: 'Review the attached claim file.' },
+              { id: 'c1a', role: 'assistant', text: 'Claim Review Summary:\n- Incident: Water damage to kitchen\n- Date: 2025-10-20\n- Amount: $3,200\n- Notes: Photos and plumber report received. No prior claims.\nAssessment: Approved, covered under policy with no exclusions.' }
+            ]);
+          } else if (chatId === 'chat-2') {
+            setMessages([
+              { id: 'c2u', role: 'user', text: 'Translate this document into Spanish.' },
+              { id: 'c2a', role: 'assistant', text: 'Traducción al español:\nEstimado asegurado,\nHemos recibido su reclamación y estamos revisando los detalles. Por favor, proporcione cualquier documento adicional si es necesario.\nAtentamente,\nEquipo de Seguros' }
+            ]);
+          } else if (chatId === 'contract-review-q4') {
+            setMessages([
+              { id: 'cr1', role: 'user', text: 'Review this vendor contract for Q4 procurement.', type: 'file', filename: 'Vendor_Agreement_Q4_2024.pdf' },
+              { id: 'cr2', role: 'assistant', text: '**Contract Review Summary**\n\n**Document:** Vendor_Agreement_Q4_2024.pdf\n\n**Key Findings:**\n- ✅ All clauses comply with company policy\n- ⚠️ Payment terms: Net 45 is acceptable but recommend Net 30\n- ✅ Liability coverage meets requirements\n- ✅ Data protection clause is comprehensive\n\n**Risk Assessment:** Low\n\n**Recommendations:**\n1. Suggest negotiating payment terms to Net 30 for better cash flow\n2. Contract is otherwise ready for signature' }
+            ]);
+          } else if (chatId === 'leave-request-nov') {
+            setMessages([
+              { id: 'lr1', role: 'user', text: 'I need to request 3 days of personal leave in November for family event.' },
+              { id: 'lr2', role: 'assistant', text: '**Leave Request Submitted**\n\n**Details:**\n- Type: Personal Leave\n- Duration: 3 days\n- Month: November 2024\n- Reason: Family event\n\n**Status:** Pending Manager Approval\n\n**Your Leave Balance:**\n- Personal Days Remaining: 15\n- Annual Leave Remaining: 12\n\n**Next Steps:**\nYour request has been forwarded to your manager for approval. You will receive a notification once approved.' }
+            ]);
+          } else if (chatId === 'premium-calculation') {
+            setMessages([
+              { id: 'pc1', role: 'user', text: 'Calculate premium for life insurance policy: Age 35, non-smoker, $500K coverage, 20-year term.' },
+              { id: 'pc2', role: 'assistant', text: '**Premium Calculation**\n\n**Policy Details:**\n- Coverage Amount: $500,000\n- Term: 20 years\n- Age: 35\n- Smoking Status: Non-smoker\n\n**Calculated Premium:**\n- Monthly: $42.50\n- Annual: $510.00\n\n**Breakdown:**\n- Base Premium: $38.00/month\n- Risk Adjustment: +$4.50/month (favorable due to non-smoker status)\n\n**Discounts Applied:**\n- Healthy Lifestyle: 5%\n- Auto-pay: 2%\n\n**Note:** Final premium may vary based on medical underwriting results.' }
+            ]);
+          } else if (chatId === 'compliance-audit') {
+            setMessages([
+              { id: 'ca1', role: 'user', text: 'Run compliance audit for Q3 2024 customer data handling procedures.' },
+              { id: 'ca2', role: 'assistant', text: '**Compliance Audit Report - Q3 2024**\n\n**Audit Scope:** Customer Data Handling Procedures\n\n**Findings:**\n- ✅ GDPR compliance: All procedures meet requirements\n- ✅ Data encryption: Implemented correctly\n- ⚠️ Data retention: Some records exceed recommended retention period\n- ✅ Access controls: Properly configured\n- ✅ Incident response: Procedures documented and tested\n\n**Risk Assessment:** Medium-Low\n\n**Recommendations:**\n1. Review and archive records older than 7 years\n2. Schedule quarterly compliance training update\n3. Update data processing agreement templates\n\n**Overall Status:** Compliant with minor improvements needed' }
+            ]);
+          } else if (chatId === 'policy-translation') {
+            setMessages([
+              { id: 'pt1', role: 'user', text: 'Translate our customer service policy document to Spanish and French.', type: 'file', filename: 'Customer_Service_Policy_EN.pdf' },
+              { id: 'pt2', role: 'assistant', text: '**Translation Complete**\n\n**Source:** Customer_Service_Policy_EN.pdf\n**Target Languages:** Spanish, French\n\n**Translations Generated:**\n- ✅ Customer_Service_Policy_ES.pdf (Spanish)\n- ✅ Customer_Service_Policy_FR.pdf (French)\n\n**Translation Quality:** High\n- Legal terminology verified\n- Cultural context adapted\n- Formatting preserved\n\n**Review Status:**\nBoth translations have been reviewed and are ready for distribution. All technical terms and policy numbers have been accurately translated.' }
+            ]);
+          }
+        }
+        // Pass these down
+
+        // Send message: update tool-specific reply simulation
+        function sendMessage() {
+          if (cycling) setCycling(false);
+          clearDemoTimers();
+          const trimmed = input.trim();
+          if (!trimmed) return;
+          const userMsg = { id: "u" + Date.now(), role: "user", text: trimmed };
+          setMessages((prev) => [...prev, userMsg]);
+          setInput("");
+          setTimeout(() => {
+            let replyText = "Simulated response.";
+            if (selectedTool?.id === 'contract-review') replyText = 'Contract reviewed: 2 compliance issues flagged. See summary above.';
+            else if (selectedTool?.id === 'data-summary') replyText = 'Summary done: Key metrics and findings extracted. See data panel.';
+            else if (selectedTool?.id === 'learning-research') replyText = 'Research results: See references and links below.';
+            else if (selectedTool?.id === 'multilingual-translation') replyText = 'Translated output: Voici la traduction, 这是翻译。';
+            else if (selectedTool?.id === 'speech-script') replyText = 'Generated script: [Engaging, client-ready speech here]';
+            else replyText = "Simulated response: I would draft steps or run the relevant tool.";
+            streamAssistant(replyText, { charDelay: 16, chunkSize: 2 });
+          }, 700);
+        }
+
+        const Bubble = ({ role, message }) => {
+          const isUser = role === 'user';
+          const baseCls = classNames(
+            'max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-soft',
+            isUser ? 'ml-auto bg-primary-600 text-white' : 'mr-auto bg-white border border-gray-200 text-gray-900'
+          );
+          if (message?.type === 'file') {
+            return (
+              <div className={baseCls}>
+                <div className={classNames('flex items-center gap-3', isUser ? 'text-white' : 'text-gray-900')}>
+                  <div className={classNames('grid h-10 w-10 place-items-center rounded-lg border', isUser ? 'border-white/40 bg-white/10' : 'border-gray-200 bg-gray-50')}>
+                    <span className="text-xl">📄</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className={classNames('truncate', isUser ? 'text-white' : 'text-gray-900')}>{message.filename}</div>
+                    <div className={classNames('text-xs', isUser ? 'text-white/80' : 'text-gray-500')}>Uploaded</div>
+                  </div>
+                </div>
+          </div>
+        );
+          }
+          return (
+            <div className={baseCls}>
+              <div className="whitespace-pre-wrap">{message?.text}</div>
+            </div>
+          );
+        };
+
+        // Tool intro info (icon, label, description per tool)
+        const TOOL_INFO = {
+          'contract-review': {
+            icon: "📄",
+            label: "Contract Review & Compliance Check",
+            desc: "Review legal contracts, check compliance requirements, and flag key clauses or risks instantly.",
+          },
+          'data-summary': {
+            icon: "📊",
+            label: "Data Summary Agent",
+            desc: "Summarize data tables, files, or lengthy documents—get concise briefs and actionable insights in seconds.",
+          },
+          'learning-research': {
+            icon: "🔎",
+            label: "Learning & Research Assistant",
+            desc: "Ask questions, explore new topics, and organize findings for your ongoing research or training needs.",
+          },
+          'multilingual-translation': {
+            icon: "🌐",
+            label: "Multilingual Translation Agent",
+            desc: "Translate documents, chats, or entire knowledge bases quickly across dozens of languages, with compliant tone.",
+          },
+          'speech-script': {
+            icon: "🗣️",
+            label: "Speech Script Generator",
+            desc: "Generate persuasive, human-like scripts for calls, pitches, or presentations tailored to any scenario.",
+          },
+        };
+
+        const scrollRef = React.useRef(null);
+
+        // Auto scroll to bottom on new messages (ChatGPT-like)
+        React.useEffect(() => {
+          const el = scrollRef.current;
+          if (!el) return;
+          // Use smooth scroll when new messages appended
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        }, [messages]);
+
+        return (
+          <div className="mx-auto max-w-[1400px] px-6 py-6">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[256px_1fr]">
+              <LeftSidebar
+                onSelectTool={interruptionHandler(handleSelectTool)}
+                onCreate={onCreate}
+                onOpenChat={(id) => {
+                  if(id==='new') interruptionHandler(handleNewChat)();
+                  else if (id.startsWith('chat-') || id.startsWith('contract-') || id.startsWith('leave-') || id.startsWith('premium-')) {
+                    interruptionHandler(handleHistoryChat)(id);
+                  } else alert(`Open ${id} (simulated)`);
+                }}
+                onOpenMyAssistant={() => (cycling ? setCycling(false) : undefined, setMode('builder'))}
+                onHelp={() => alert("Help Center (simulated)")}
+                selectedToolId={selectedTool?.id}
+                showHistoryOnly={agentMode === 'department'}
+                agentMode={agentMode}
+              />
+              <div className="flex min-h-[70vh] flex-col rounded-2xl border border-gray-200 bg-gray-50 shadow-soft">
+                  <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 rounded-t-2xl">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {selectedTool
+                      ? TOOL_INFO[selectedTool.id]?.label || selectedTool.name
+                      : "AIA copilot"}
+                  </div>
+                  <div className="flex items-center gap-2"></div>
+                </div>
+                  <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+                    {(selectedTool && messages.length === 0) ? (
+                      // Show AI tool intro section if a tool is selected
+                      <div className="flex h-full min-h-[350px] flex-col items-center justify-center text-center select-none">
+                        <div className="mb-7 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 text-5xl shadow-soft">
+                          {TOOL_INFO[selectedTool.id]?.icon || "🤖"}
+                        </div>
+                        <div className="text-3xl font-bold text-gray-900 mb-2">{TOOL_INFO[selectedTool.id]?.label || selectedTool.name}</div>
+                        <div className="mb-4 text-base text-gray-600 max-w-md">{TOOL_INFO[selectedTool.id]?.desc || "Interact with this AI-powered tool."}</div>
+                        <div className="mt-2 text-xs text-gray-400">Outputs are simulated in this demo.</div>
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="flex h-full min-h-[350px] flex-col items-center justify-center text-center select-none">
+                        <div className="mb-7 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 p-2 shadow-soft">
+                          <img src="AIAnew.jpg" alt="AIA" className="h-full w-auto object-contain" />
+                        </div>
+                        <div className="text-3xl font-bold text-gray-900 mb-2">AIA copilot</div>
+                        <div className="mb-4 text-base text-gray-600 max-w-md">Ask me anything. I'm your AIA copilot and I can guide you through AIA Copilot.<br/>Start a conversation below.</div>
+                        <div className="mt-2 text-xs text-gray-400">All your chats and agents are private unless shared.</div>
+                      </div>
+                    ) : (
+                      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+                        {messages.map((m) => (
+                          <Bubble key={m.id} role={m.role} message={m} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                <div className="border-t border-gray-200 bg-white p-3 rounded-b-2xl">
+                  {/* File input logic */}
+                  {(() => {
+                    const [picture, setPicture] = React.useState(null);
+                    const [file, setFile] = React.useState(null);
+                    // Helper: clear selected file
+                    function removeAttachment(type) {
+                      if(type==='picture') setPicture(null);
+                      else if(type==='file') setFile(null);
+                    }
+                    // Keep these refs to access the element
+                    const picInputRef = React.useRef();
+                    const fileInputRef = React.useRef();
+
+                    // Parent handles text input
+                    return (
+                      <React.Fragment>
+                        <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
+                          <textarea
+                            value={input}
+                            onChange={interruptionHandler((e) => setInput(e.target.value))}
+                            rows={1}
+                            placeholder={selectedTool ? `Message ${TOOL_INFO[selectedTool.id]?.label || selectedTool.name}...` : "Message Template-Based Assistant..."}
+                            className="max-h-40 flex-1 resize-none rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                interruptionHandler(sendMessage)();
+                              }
+                            }}
+                          />
+                          <button title="Attach Picture" type="button"
+                            className="rounded-lg bg-white border border-gray-200 p-2 text-xl hover:bg-primary-50"
+                            onClick={() => picInputRef.current && picInputRef.current.click()}
+                          >
+                            <span role="img" aria-label="image">🖼️</span>
+                          </button>
+                          <input type="file" accept="image/*" ref={picInputRef} style={{display:'none'}}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if(!f) return;
+                              const url = URL.createObjectURL(f);
+                              setPicture({ name: f.name, url });
+                              // clear file input value for repeat upload
+                              e.target.value = '';
+                            }}
+                          />
+                          <button title="Attach File" type="button"
+                            className="rounded-lg bg-white border border-gray-200 p-2 text-xl hover:bg-primary-50"
+                            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                          >
+                            <span role="img" aria-label="file">📎</span>
+                          </button>
+                          <input type="file" ref={fileInputRef} style={{display:'none'}}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if(!f) return;
+                              setFile({ name: f.name });
+                              e.target.value = '';
+                            }}
+                          />
+                          <button
+                            onClick={sendMessage}
+                            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+                          >
+                            Send
+                          </button>
+                        </div>
+                        {/* Uploaded preview/info */}
+                        <div className="mx-auto w-full max-w-3xl text-[13px] mt-2 flex gap-4 flex-wrap items-center">
+                          {picture && (
+                            <div className="flex items-center gap-2 border border-primary-100 bg-primary-50 px-3 py-1.5 rounded-lg">
+                              <img src={picture.url} alt="preview" className="h-8 w-8 object-cover rounded border border-gray-300" />
+                              <span className="truncate max-w-[120px] text-gray-700">{picture.name}</span>
+                              <button onClick={()=>removeAttachment('picture')} className="ml-1 text-sm text-primary-600 hover:underline">Remove</button>
+                            </div>
+                          )}
+                          {file && (
+                            <div className="flex items-center gap-2 border border-gray-100 bg-gray-50 px-3 py-1.5 rounded-lg">
+                              <span className="text-[18px]">📎</span>
+                              <span className="truncate max-w-[120px] text-gray-700">{file.name}</span>
+                              <button onClick={()=>removeAttachment('file')} className="ml-1 text-sm text-primary-600 hover:underline">Remove</button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="mx-auto w-full max-w-3xl text-[11px] text-gray-500 mt-2">AI outputs are simulated in this demo.</div>
+                      </React.Fragment>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function Wizard({ onSave }) {
+        const [basic, setBasic] = useState({ name: '', description: '' });
+        const [permissions, setPermissions] = useState('private');
+        const [introduction, setIntroduction] = useState('');
+        const [opening, setOpening] = useState('');
+        const [avatarUrl, setAvatarUrl] = useState('');
+        // Insurance industry knowledge base (EN)
+        const ALL_KB = [
+          'Underwriting Policy Knowledge Base',
+          'Claims Case Knowledge Base',
+          'Clause & Regulatory Reference Base',
+          'Customer FAQ Knowledge Base',
+          'Product Information Repository',
+          'Medical Provider Directory',
+          'Anti-Money Laundering Compliance Database',
+        ];
+        const [knowledgeBases, setKnowledgeBases] = useState([]); // selected kb list
+        const [highlightedKb, setHighlightedKb] = useState(null); // which KB is being highlighted
+        const [kbDemoActive, setKbDemoActive] = useState(true); // allow demo until user interacts
+
+        // --- Demo knowledge base auto-select animation (starts 11s after open) ---
+        React.useEffect(() => {
+          if (!kbDemoActive) return;
+          let cancelled = false;
+          let timers = [];
+          // start after 11 seconds
+          const startTimer = setTimeout(() => {
+            if (cancelled) return;
+            const demoKbs = [
+              'Underwriting Policy Knowledge Base',
+              'Claims Case Knowledge Base',
+              'Customer FAQ Knowledge Base',
+            ];
+            setKnowledgeBases([]);
+            setHighlightedKb(null);
+            demoKbs.forEach((kb, i) => {
+              // highlight before checking
+              const t1 = setTimeout(() => { if (!cancelled) setHighlightedKb(kb); }, i * 900);
+              // check after short delay
+              const t2 = setTimeout(() => {
+                if (!cancelled) {
+                  setKnowledgeBases(prev => (prev.includes(kb) ? prev : [...prev, kb]));
+                }
+              }, i * 900 + 220);
+              // remove highlight shortly after
+              const t3 = setTimeout(() => { if (!cancelled) setHighlightedKb(null); }, i * 900 + 520);
+              timers.push(t1, t2, t3);
+            });
+          }, 11000);
+          timers.push(startTimer);
+          return () => { cancelled = true; timers.forEach(clearTimeout); };
+        }, [kbDemoActive]);
+
+        // If user manually interacts, stop the demo selection immediately
+        const userSetKnowledgeBases = React.useCallback(fn => {
+          // Stop KB demo animation on any manual change
+          setKbDemoActive(false);
+          setHighlightedKb(null);
+          setKnowledgeBases(fn);
+        }, []);
+
+        const [autoTypeStage, setAutoTypeStage] = useState(0); // 0 = not started, 1=typing, 2=done
+        const [showPulse, setShowPulse] = useState(false);
+        // Demo content for auto-typing animation
+        const DEMO = {
+          name: 'Customer script generator',
+          description: 'You are a professional sales and customer communication expert.\n\nGenerate a customer conversation script in natural, persuasive English based on the following details.\n\nMake it sound like a real human conversation that builds trust and achieves the business goal.',
+          opening: "Hi, I'm a Ai help you deal with client, please describe the condition you met",
+          introduction:
+            'this is the 1.0 version of customer script generator with minimum prompt, it is primal but useable. Please update if you find any modification would help improve this agent.',
+        };
+
+        // On mount, show pulse for 1 second then start typing
+        React.useEffect(() => {
+          let running = true;
+          let timeouts = [];
+          setShowPulse(true);
+          setBasic({ name: '', description: '' });
+          setOpening('');
+          setIntroduction('');
+          setAutoTypeStage(0);
+          // After 1s, remove pulse and start auto-type
+          const startTimeout = setTimeout(() => {
+            if (!running) return;
+            setShowPulse(false);
+            setAutoTypeStage(1);
+            // Now do typing chain:
+            function typeInto(setValue, full, next, delay = 20) {
+              let i = 0;
+              function step() {
+                if (!running) return;
+                setValue(full.slice(0, i));
+                if (i <= full.length) {
+                  i++;
+                  timeouts.push(setTimeout(step, delay));
+                } else {
+                  if (next) timeouts.push(setTimeout(next, 350));
+                }
+              }
+              step();
+            }
+            typeInto(
+              v => setBasic(b => ({ ...b, name: v })), DEMO.name,
+              () => {
+                setAutoTypeStage(2);
+                typeInto(
+                  v => setBasic(b => ({ ...b, description: v })), DEMO.description,
+                  () => {
+                    setAutoTypeStage(3);
+                    typeInto(setOpening, DEMO.opening, () => {
+                      setAutoTypeStage(4);
+                      typeInto(setIntroduction, DEMO.introduction, () => setAutoTypeStage(5), 16);
+                    }, 16);
+                  }, 14);
+              }, 24);
+          }, 1000); // 1 second pulse
+          timeouts.push(startTimeout);
+          return () => { running = false; timeouts.forEach(clearTimeout); };
+        }, []);
+
+        function handleSave() {
+          const newAssistant = {
+            id: 'a' + Math.random().toString(36).slice(2, 8),
+            icon: avatarUrl ? '' : '🤖',
+            avatarUrl: avatarUrl || undefined,
+            name: basic.name || 'Untitled Agent',
+            department: 'Claims',
+            description: basic.description || 'Assistant',
+            introduction: introduction || undefined,
+            opening: opening || '',
+            lastUsed: new Date().toISOString().slice(0, 10),
+            reuseCount: 0,
+            permissions,
+            satisfaction: 4.5,
+            avgResponseMs: 1100,
+            reuseRate: 0.5,
+          };
+          onSave(newAssistant);
+          setBasic({ name: '', description: '' });
+          setPermissions('private');
+          setIntroduction('');
+          setOpening('');
+          setAvatarUrl('');
+        }
+
+        const isValid = basic.name.trim().length > 0;
+
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+            <div className="flex flex-col items-center">
+              <div className="text-sm font-semibold text-gray-900">Create New Agent</div>
+              <div className="mt-3 flex flex-col items-center">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="avatar preview" className="h-16 w-16 rounded-xl object-cover border border-gray-200" />
+                ) : (
+                  <div className="grid h-16 w-16 place-items-center rounded-xl bg-gray-100 text-2xl">🤖</div>
+                )}
+                <div className="mt-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm shadow-soft hover:bg-gray-50">
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setAvatarUrl(String(ev.target?.result || ''));
+                      reader.readAsDataURL(file);
+                    }} />
+                    <span>Upload Avatar</span>
+                  </label>
+                  {avatarUrl && (
+                    <button onClick={() => setAvatarUrl('')} className="ml-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50">Remove</button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3">
+              <div className="relative border-2 border-red-500 rounded-lg p-3">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">1</div>
+                <label className="text-xs text-gray-500">Name</label>
+                <input
+                  value={basic.name}
+                  onChange={(e) => setBasic({ ...basic, name: e.target.value })}
+                  className={
+                    'mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200 ' +
+                    (showPulse ? 'animate-pulse border-4 border-primary-400 ring-2 ring-primary-500' : '')
+                  }
+                  placeholder="e.g., Clause Interpreter"
+                />
+              </div>
+              <div className="relative border-2 border-red-500 rounded-lg p-3">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">2</div>
+                <label className="text-xs text-gray-500">Description</label>
+                <textarea value={basic.description} onChange={(e) => setBasic({ ...basic, description: e.target.value })} rows={3} className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" placeholder="What does this agent do?" />
+              </div>
+              <div className="relative border-2 border-red-500 rounded-lg p-3">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">3</div>
+                <label className="text-xs text-gray-500">Opening (first sentence assistant says)</label>
+                <textarea value={opening} onChange={(e) => setOpening(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" placeholder="Hi, how can I help you today?" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Visibility</label>
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  {['private', 'public'].map((p) => (
+                    <button key={p} onClick={() => setPermissions(p)} className={classNames('rounded-xl border p-3 text-left shadow-soft hover:bg-gray-50', permissions === p ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white')}>
+                      <div className="text-sm font-semibold capitalize text-gray-900">{p}</div>
+                      <div className="mt-1 text-xs text-gray-600">{p === 'private' ? 'Only you' : 'All employees'}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="relative border-2 border-red-500 rounded-lg p-3">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">4</div>
+                <label className="text-xs text-gray-500">Introduction (note)</label>
+                <textarea value={introduction} onChange={(e) => setIntroduction(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" placeholder="Short intro or SOP note for collaborators" />
+              </div>
+              <div className="relative border-2 border-red-500 rounded-lg p-3">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">5</div>
+                <label className="text-xs text-gray-500 font-semibold mb-1 block">Knowledge Bases <span className="text-gray-400 font-normal">(choose any relevant sources)</span></label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                  {ALL_KB.map(kb => (
+                    <label
+                      key={kb}
+                      className={
+                        'flex items-center gap-2 text-xs cursor-pointer select-none rounded-lg border transition-all duration-200 ' +
+                        (highlightedKb === kb
+                          ? 'border-primary-300 bg-primary-50 text-primary-700 scale-[1.02] shadow-soft'
+                          : 'border-transparent text-gray-700 hover:bg-gray-100')
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-400"
+                        checked={knowledgeBases.includes(kb)}
+                        onChange={e => {
+                          userSetKnowledgeBases(v => (
+                            e.target.checked
+                              ? [...v, kb]
+                              : v.filter(x => x !== kb)
+                          ));
+                        }}
+                      />
+                      <span className="py-1">{kb}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button onClick={() => { setBasic({ name: '', description: '' }); setPermissions('private'); setIntroduction(''); setOpening(''); setAvatarUrl(''); }} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 hover:bg-gray-50">Reset</button>
+              <button onClick={handleSave} disabled={!isValid} className={classNames('rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-soft', isValid ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300')}>Save Agent</button>
+            </div>
+          </div>
+        );
+      }
+
+      // Microsoft Teams Left Navigation Bar Component
+      function TeamsLeftNavBar({ selectedItem = 'teams' }) {
+        const navItems = [
+          { id: 'activity', icon: '🔔', label: 'Activity', svg: null },
+          { id: 'chat', icon: '💬', label: 'Chat', badge: 1, svg: null },
+          { id: 'teams', icon: '👥', label: 'Teams', svg: null },
+          { id: 'calendar', icon: '📅', label: 'Calendar', svg: null },
+          { id: 'calls', icon: '📞', label: 'Calls', svg: null },
+          { id: 'files', icon: '📄', label: 'Files', svg: null },
+          { id: 'contoso', icon: '🌀', label: 'Contoso', svg: null },
+          { id: 'aia-copilot', icon: '🤖', label: 'AIA Copilot', svg: null },
+        ];
+
+        // Teams Logo - Microsoft Teams logo
+        const TeamsLogo = () => (
+          <img src="teams.png" alt="Microsoft Teams" className="w-12 h-12 object-contain" />
+        );
+
+        return (
+          <div className="flex flex-col h-full w-[72px] bg-[#f8f8f8] border-r border-gray-300">
+            {/* Microsoft Teams Logo */}
+            <div className="flex items-center justify-center h-[48px] border-b border-gray-300">
+              <TeamsLogo />
+            </div>
+
+            {/* Navigation Items */}
+            <div className="flex-1 flex flex-col items-center pt-2">
+              {navItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={`teams-nav-item flex flex-col items-center justify-center w-full py-2 cursor-pointer relative group ${
+                    selectedItem === item.id ? 'selected' : ''
+                  }`}
+                  title={item.label}
+                >
+                  {item.badge && (
+                    <span className="absolute top-1 right-3 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                  )}
+                  <div className={`text-[22px] mb-0.5 ${selectedItem === item.id ? 'teams-purple' : 'text-gray-600'}`}>
+                    {item.icon}
+                  </div>
+                  <span className={`teams-nav-label text-[11px] text-center leading-tight px-1 ${
+                    selectedItem === item.id ? 'teams-purple font-medium' : 'text-gray-500'
+                  }`}>
+                    {item.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* More Options and Apps */}
+            <div className="flex flex-col items-center pt-2 pb-2 border-t border-gray-300">
+              <div className="teams-nav-item flex flex-col items-center justify-center w-full py-2 cursor-pointer group" title="More">
+                <div className="text-xl mb-0.5 text-gray-600">⋯</div>
+                <span className="text-[11px] text-center leading-tight px-1 text-gray-500">More</span>
+              </div>
+              <div className="teams-nav-item flex flex-col items-center justify-center w-full py-2 cursor-pointer group" title="Apps">
+                <div className="text-xl mb-0.5 text-gray-600">⊞</div>
+                <span className="text-[11px] text-center leading-tight px-1 text-gray-500">Apps</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Microsoft Teams Top Bar Component
+      function TeamsTopBar() {
+        return (
+          <div className="h-12 bg-[#f8f8f8] border-b border-gray-300 flex items-center justify-between px-3 flex-shrink-0">
+            {/* Left section: Logo and navigation arrows */}
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 flex items-center justify-center">
+                <div className="w-5 h-5 rounded bg-[#6264A7] flex items-center justify-center">
+                  <span className="text-[10px] text-white font-bold">T</span>
+                </div>
+              </div>
+              <button className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 rounded transition-colors">
+                <span className="text-sm">‹</span>
+              </button>
+              <button className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 rounded transition-colors">
+                <span className="text-sm">›</span>
+              </button>
+            </div>
+
+            {/* Center section: Search bar */}
+            <div className="flex-1 max-w-2xl mx-8">
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 12C9.76142 12 12 9.76142 12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M11 11L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search"
+                  className="w-full h-8 pl-10 pr-4 bg-white border border-gray-300 rounded-md text-sm text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#6264A7] focus:border-[#6264A7]"
+                />
+              </div>
+            </div>
+
+            {/* Right section: Options, profile, window controls */}
+            <div className="flex items-center gap-2">
+              {/* Ellipsis (More options) */}
+              <button className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 rounded transition-colors">
+                <span className="text-base">⋯</span>
+              </button>
+
+              {/* Profile picture with online status */}
+              <div className="relative w-8 h-8 ml-2">
+                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" fill="#9CA3AF"/>
+                    <path d="M12 14C7.58172 14 4 16.2386 4 19V22H20V19C20 16.2386 16.4183 14 12 14Z" fill="#9CA3AF"/>
+                  </svg>
+                </div>
+                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4L3.5 5.5L6 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+
+              {/* Window controls */}
+              <div className="flex items-center gap-1 ml-4">
+                <button className="w-10 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 rounded transition-colors">
+                  <span className="text-sm">−</span>
+                </button>
+                <button className="w-10 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 rounded transition-colors">
+                  <span className="text-sm font-light">□</span>
+                </button>
+                <button className="w-10 h-8 flex items-center justify-center text-gray-600 hover:bg-red-500 hover:text-white rounded transition-colors">
+                  <span className="text-sm">×</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Microsoft Teams Window Wrapper
+      function TeamsWindow({ children }) {
+        return (
+          <div className="flex h-[90vh] w-[95vw] max-w-[1600px] bg-white rounded-lg shadow-2xl overflow-hidden border border-gray-300">
+            <TeamsLeftNavBar selectedItem="aia-copilot" />
+            <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              <TeamsTopBar />
+              <div className="flex-1 overflow-auto">
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [assistants, setAssistants] = useState(INITIAL_ASSISTANTS);
+        const [search, setSearch] = useState('');
+        const [department, setDepartment] = useState('All');
+        const [headerDepartment, setHeaderDepartment] = useState(null);
+        const [showWizard, setShowWizard] = useState(false);
+        const [agentMode, setAgentMode] = useState('personal');
+        const [selected, setSelected] = useState(null);
+        const [mode, setMode] = useState('home');
+
+        // Generate deterministic random number of tools for each department (6-12 tools) based on deptId hash
+        function generateToolsForDepartment(deptId, baseTools = []) {
+          // Create a simple hash from deptId to get consistent random number per department
+          let hash = 0;
+          for (let i = 0; i < deptId.length; i++) {
+            hash = ((hash << 5) - hash) + deptId.charCodeAt(i);
+            hash = hash & hash; // Convert to 32-bit integer
+          }
+          const toolCount = 6 + (Math.abs(hash) % 7); // 6-12 tools, consistent per department
+          if (baseTools.length >= toolCount) {
+            return baseTools;
+          }
+          const additionalTools = [];
+          const toolTypes = ['Inquiry', 'Request', 'Support', 'Resources', 'Report', 'Analysis', 'Review', 'Guide', 'Calculator', 'Generator', 'Tracker', 'Planner'];
+          const icons = ['📝', '📋', '💬', '📚', '📊', '📈', '📑', '📖', '💳', '🔧', '✅', '⚙️'];
+          
+          for (let i = baseTools.length; i < toolCount; i++) {
+            const toolIndex = i % toolTypes.length;
+            additionalTools.push({
+              id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-${toolTypes[toolIndex].toLowerCase()}-${i}`,
+              name: `${toolTypes[toolIndex]}`,
+              icon: icons[i % icons.length],
+              desc: `${toolTypes[toolIndex]} service from ${deptId}`,
+            });
+          }
+          return [...baseTools, ...additionalTools];
+        }
+
+        // Default tools for departments that don't have specific tools defined
+        function getDefaultTools(deptId) {
+          return generateToolsForDepartment(deptId, [
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-inquiry`, name: 'Inquiry', icon: '📝', desc: 'Get information and assistance from this department' },
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-request`, name: 'Service Request', icon: '📋', desc: 'Submit a service request to this department' },
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-support`, name: 'Support', icon: '💬', desc: 'Get support and guidance from this department' },
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-resources`, name: 'Resources', icon: '📚', desc: 'Access resources and materials from this department' },
+          ]);
+        }
+
+        // Department tools configuration - tools serve employees from other departments
+        const DEPARTMENT_TOOLS = {
+          'Human Resources / People / Culture': generateToolsForDepartment('HR', [
+            { id: 'leave-request', name: 'Leave Request', icon: '🏖️', desc: 'Submit and manage your leave requests' },
+            { id: 'expense-claim', name: 'Expense Claim', icon: '💳', desc: 'Submit and track your business expense claims' },
+            { id: 'benefits-inquiry', name: 'Benefits Inquiry', icon: '🎁', desc: 'Get information about employee benefits and entitlements' },
+            { id: 'payroll-inquiry', name: 'Payroll Inquiry', icon: '💵', desc: 'Check your payslips and payroll information' },
+          ]),
+          'Legal & Compliance': generateToolsForDepartment('Legal', [
+            { id: 'contract-review', name: 'Contract Review', icon: '📑', desc: 'Review contracts and legal documents before signing' },
+            { id: 'compliance-check', name: 'Compliance Check', icon: '✅', desc: 'Check if your activities comply with regulations' },
+            { id: 'legal-advice', name: 'Legal Advice', icon: '💼', desc: 'Get legal guidance on workplace matters' },
+            { id: 'document-drafting', name: 'Document Drafting', icon: '✍️', desc: 'Help draft legal documents and agreements' },
+          ]),
+          'Risk Management': generateToolsForDepartment('Risk Management', [
+            { id: 'risk-assessment', name: 'Risk Assessment', icon: '⚠️', desc: 'Assess risks for your projects or activities' },
+            { id: 'incident-reporting', name: 'Incident Reporting', icon: '🚨', desc: 'Report workplace incidents and safety concerns' },
+            { id: 'compliance-guidance', name: 'Compliance Guidance', icon: '📖', desc: 'Get guidance on risk and compliance requirements' },
+            { id: 'safety-training', name: 'Safety Training', icon: '🛡️', desc: 'Access safety training materials and resources' },
+          ]),
+          'Finance / Capital Management': generateToolsForDepartment('Finance', [
+            { id: 'policy-inquiry', name: 'Policy Inquiry', icon: '📄', desc: 'Get information about your insurance policies' },
+            { id: 'premium-calculator', name: 'Premium Calculator', icon: '💳', desc: 'Calculate insurance premiums for new coverage' },
+            { id: 'coverage-request', name: 'Coverage Request', icon: '📋', desc: 'Request new coverage or modify existing policies' },
+            { id: 'policy-comparison', name: 'Policy Comparison', icon: '⚖️', desc: 'Compare different policy options and coverage levels' },
+          ]),
+        };
+
+        const filtered = useMemo(() => {
+          const term = search.trim().toLowerCase();
+          return assistants.filter((a) => {
+            const matchesDept = department === 'All' || a.department === department;
+            const matchesTerm = !term || `${a.name} ${a.description} ${a.department}`.toLowerCase().includes(term);
+            return matchesDept && matchesTerm;
+          });
+        }, [assistants, search, department]);
+
+        function handleSaveAssistant(newAssistant) {
+          setAssistants([newAssistant, ...assistants]);
+          setShowWizard(false);
+          setSelected(newAssistant);
+        }
+
+        function fakeToast(msg) {
+          alert(msg);
+        }
+
+        return (
+          <TeamsWindow>
+            <div className="flex-1 overflow-auto">
+              <Header onCreate={() => setShowWizard(true)} mode={mode} setMode={setMode} selectedDepartment={headerDepartment} setSelectedDepartment={setHeaderDepartment} agentMode={agentMode} setAgentMode={setAgentMode} />
+              {agentMode === 'department' && (
+                <DepartmentBar selectedDepartment={headerDepartment} setSelectedDepartment={setHeaderDepartment} setMode={setMode} />
+              )}
+              {mode === 'home' ? (
+                agentMode === 'department' && headerDepartment ? (
+                  <DepartmentView
+                    department={headerDepartment}
+                    tools={(DEPARTMENT_TOOLS[headerDepartment] || getDefaultTools(headerDepartment))}
+                    onSelectTool={(tool) => {
+                      // Handle tool selection - could navigate to a tool page or start a conversation
+                      alert(`Selected ${tool.name} tool for ${headerDepartment}`);
+                    }}
+                    onBack={() => setHeaderDepartment(null)}
+                    setMode={setMode}
+                    setSelectedDepartment={setHeaderDepartment}
+                  />
+                ) : (
+                <HomeView
+                  key={agentMode}
+                  assistants={assistants}
+                  onCreate={() => setShowWizard(true)}
+                  onSelectTool={(t) => { setShowWizard(true); }}
+                  setMode={setMode}
+                    agentMode={agentMode}
+                />
+                )
+              ) : (
+                <div className="mx-auto max-w-[1400px] px-6 py-6">
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="text-base font-semibold text-gray-900">Assistants</div>
+                      <div className="text-xs text-gray-500">Showing {filtered.length} of {assistants.length}</div>
+                    </div>
+                    <CardGrid
+                      assistants={filtered}
+                      onRun={(a) => { setSelected(a); fakeToast(`Running \"${a.name}\"... (simulated)`); }}
+                      onShare={(a) => { setSelected(a); fakeToast(`Share dialog for \"${a.name}\" (simulated)`); }}
+                      onEdit={(a) => { setShowWizard(true); setSelected(a); fakeToast(`Open wizard to edit \"${a.name}\" (simulated)`); }}
+                      onLogs={(a) => { setSelected(a); fakeToast(`Viewing logs for \"${a.name}\" (simulated)`); }}
+                    />
+                  </div>
+                </div>
+              )}
+              <Modal open={showWizard} onClose={() => setShowWizard(false)} title="Create New Agent">
+                <Wizard onSave={handleSaveAssistant} />
+              </Modal>
+            </div>
+          </TeamsWindow>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+  </html>
+
+

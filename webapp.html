@@ -1,0 +1,1448 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Template-Based Assistant — Multi-AI Assistant Platform (Demo)</title>
+    <meta name="color-scheme" content="light only" />
+    <!-- Tailwind Play CDN (no build step) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                50: '#fef2f2',
+                100: '#fee2e2',
+                200: '#fecaca',
+                300: '#fca5a5',
+                400: '#f87171',
+                500: '#ef4444', /* tailwind red-500 */
+                600: '#dc2626', /* tailwind red-600, main PRIMARY */
+                700: '#b91c1c',
+                800: '#991b1b',
+                900: '#7f1d1d',
+              },
+            },
+            boxShadow: {
+              soft: '0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10)',
+            },
+          },
+        },
+      };
+    </script>
+    <!-- Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      html, body { height: 100%; }
+      body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; }
+    </style>
+    <!-- React + ReactDOM + Babel for JSX in-browser -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useMemo, useEffect } = React;
+
+      // Mock data
+      const DEPARTMENTS = [
+        'All',
+        'Claims',
+        'Underwriting',
+        'Legal',
+        'Actuarial',
+        'Customer Support',
+        'Compliance',
+      ];
+
+      const TEMPLATE_OPTIONS = [
+        { id: 'report', name: 'Report Generation', desc: 'Generate structured reports from documents and data.' },
+        { id: 'policyqa', name: 'Policy Q&A', desc: 'Answer policy-related questions with citations.' },
+        { id: 'translation', name: 'Translation', desc: 'Translate documents and snippets across languages.' },
+        { id: 'summarization', name: 'Data Summarization', desc: 'Summarize policy clauses, claims notes, and more.' },
+      ];
+
+      const INITIAL_ASSISTANTS = [
+        {
+          id: 'a1',
+          icon: '📄',
+          name: 'Claims Report Draft Assistant',
+          department: 'Claims',
+          description: 'Drafts claim incident reports with consistent formatting.',
+          lastUsed: '2025-10-24',
+          reuseCount: 132,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.6,
+          avgResponseMs: 1200,
+          reuseRate: 0.72,
+        },
+        {
+          id: 'a2',
+          icon: '⚖️',
+          name: 'Clause Interpreter',
+          department: 'Legal',
+          description: 'Explains policy clauses and flags potential risks.',
+          lastUsed: '2025-10-29',
+          reuseCount: 89,
+          template: 'policyqa',
+          permissions: 'team',
+          satisfaction: 4.4,
+          avgResponseMs: 1400,
+          reuseRate: 0.66,
+        },
+        {
+          id: 'a3',
+          icon: '🌐',
+          name: 'Bilingual Adjuster Translator',
+          department: 'Customer Support',
+          description: 'Snappy EN↔ES translation with terminology guardrails.',
+          lastUsed: '2025-10-28',
+          reuseCount: 203,
+          template: 'translation',
+          permissions: 'public',
+          satisfaction: 4.7,
+          avgResponseMs: 900,
+          reuseRate: 0.81,
+        },
+        {
+          id: 'a4',
+          icon: '📊',
+          name: 'Data Summary Agent',
+          department: 'Analytics',
+          description: 'Summarizes large datasets and extracts key metrics.',
+          lastUsed: '2025-10-30',
+          reuseCount: 45,
+          template: 'summarization',
+          permissions: 'team',
+          satisfaction: 4.3,
+          avgResponseMs: 950,
+          reuseRate: 0.58,
+        },
+        {
+          id: 'a5',
+          icon: '🔎',
+          name: 'Learning & Research Assistant',
+          department: 'Training',
+          description: 'Helps employees learn and research insurance topics.',
+          lastUsed: '2025-10-29',
+          reuseCount: 78,
+          template: 'policyqa',
+          permissions: 'public',
+          satisfaction: 4.5,
+          avgResponseMs: 1100,
+          reuseRate: 0.65,
+        },
+        {
+          id: 'a6',
+          icon: '🗣️',
+          name: 'Speech Script Generator',
+          department: 'Sales',
+          description: 'Creates persuasive scripts for calls and presentations.',
+          lastUsed: '2025-10-28',
+          reuseCount: 92,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.4,
+          avgResponseMs: 1300,
+          reuseRate: 0.61,
+        },
+        {
+          id: 'a7',
+          icon: '📑',
+          name: 'Contract Review & Compliance',
+          department: 'Legal',
+          description: 'Reviews contracts for compliance risks and improvements.',
+          lastUsed: '2025-10-31',
+          reuseCount: 67,
+          template: 'policyqa',
+          permissions: 'team',
+          satisfaction: 4.6,
+          avgResponseMs: 1500,
+          reuseRate: 0.68,
+        },
+        {
+          id: 'a8',
+          icon: '💼',
+          name: 'Policy Underwriter Assistant',
+          department: 'Underwriting',
+          description: 'Evaluates risk factors and underwriting recommendations.',
+          lastUsed: '2025-10-27',
+          reuseCount: 124,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.5,
+          avgResponseMs: 1100,
+          reuseRate: 0.71,
+        },
+        {
+          id: 'a9',
+          icon: '📋',
+          name: 'Compliance Audit Assistant',
+          department: 'Compliance',
+          description: 'Conducts compliance audits and generates audit reports.',
+          lastUsed: '2025-10-26',
+          reuseCount: 56,
+          template: 'report',
+          permissions: 'team',
+          satisfaction: 4.4,
+          avgResponseMs: 1350,
+          reuseRate: 0.62,
+        },
+        {
+          id: 'a10',
+          icon: '🏥',
+          name: 'Medical Claims Reviewer',
+          department: 'Claims',
+          description: 'Reviews medical claims for accuracy and coverage.',
+          lastUsed: '2025-10-25',
+          reuseCount: 189,
+          template: 'policyqa',
+          permissions: 'team',
+          satisfaction: 4.6,
+          avgResponseMs: 1000,
+          reuseRate: 0.75,
+        },
+        {
+          id: 'a11',
+          icon: '💰',
+          name: 'Premium Calculator',
+          department: 'Actuarial',
+          description: 'Calculates insurance premiums based on risk profiles.',
+          lastUsed: '2025-10-30',
+          reuseCount: 234,
+          template: 'report',
+          permissions: 'public',
+          satisfaction: 4.5,
+          avgResponseMs: 850,
+          reuseRate: 0.82,
+        },
+        {
+          id: 'a12',
+          icon: '📞',
+          name: 'Customer Service Helper',
+          department: 'Customer Support',
+          description: 'Assists with customer inquiries and policy questions.',
+          lastUsed: '2025-10-31',
+          reuseCount: 312,
+          template: 'policyqa',
+          permissions: 'public',
+          satisfaction: 4.7,
+          avgResponseMs: 750,
+          reuseRate: 0.88,
+        },
+      ];
+
+      function classNames(...classes) {
+        return classes.filter(Boolean).join(' ');
+      }
+
+      function StatChip({ label, value, hint }) {
+        return (
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
+            <div className="text-sm text-gray-500">{label}</div>
+            <div className="text-sm font-semibold text-gray-900">{value}</div>
+            {hint && <div className="text-xs text-gray-400">{hint}</div>}
+          </div>
+        );
+      }
+
+      function Header({ onCreate, mode, setMode, selectedDepartment, setSelectedDepartment, agentMode, setAgentMode }) {
+        const MODES = [
+          { id: 'builder', label: 'My Assistants' },
+        ];
+
+        return (
+          <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+            <div className="mx-auto max-w-[1800px] px-6">
+              <div className="flex h-20 items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      setMode('home');
+                      setSelectedDepartment && setSelectedDepartment(null);
+                    }}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                  >
+                    <div className="h-10 w-10 rounded-lg bg-primary-600 text-white grid place-items-center shadow-soft">
+                      <span className="font-bold text-lg">AIA</span>
+                    </div>
+                    <div className="text-lg font-semibold text-gray-900">AIA Copilot</div>
+                  </button>
+                  <div className="flex items-center gap-2 border-l border-gray-200 pl-4">
+                    <button
+                      onClick={() => {
+                        if (setMode) setMode('home');
+                        if (setAgentMode) setAgentMode('personal');
+                        if (setSelectedDepartment) setSelectedDepartment(null);
+                      }}
+                      className={classNames(
+                        'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                        agentMode === 'personal'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      )}
+                    >
+                      Personal
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (setMode) setMode('home');
+                        if (setAgentMode) setAgentMode('department');
+                        if (setSelectedDepartment) setSelectedDepartment('Human Resources / People / Culture');
+                      }}
+                      className={classNames(
+                        'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                        agentMode === 'department'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      )}
+                    >
+                      Department
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setMode('builder')} className={classNames('inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-soft hover:bg-primary-700', mode === 'builder' ? 'bg-primary-600' : 'bg-primary-500')}>
+                    <span>Recent Used Assistant</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function DepartmentBar({ selectedDepartment, setSelectedDepartment, setMode }) {
+        const ALL_DEPARTMENTS = [
+          { id: 'Distribution & Marketing', icon: '📢' },
+          { id: 'Risk Management', icon: '⚠️' },
+          { id: 'Finance / Capital Management', icon: '💰' },
+          { id: 'Investment Management', icon: '📈' },
+          { id: 'Healthcare / Health Business', icon: '🏥' },
+          { id: 'Human Resources / People / Culture', icon: '👥' },
+          { id: 'Legal & Compliance', icon: '⚖️' },
+          { id: 'Technology / Digital / Innovation', icon: '💻' },
+          { id: 'Agency Distribution', icon: '🏢' },
+          { id: 'Partnership Distribution', icon: '🤝' },
+          { id: 'Corporate Solutions', icon: '💼' },
+          { id: 'Operations / Life Operations', icon: '⚙️' },
+          { id: 'Strategy / Transformation', icon: '🎯' },
+          { id: 'Internal Audit', icon: '🔍' },
+          { id: 'Marketing & Products', icon: '📊' },
+          { id: 'Data Analytics & Reporting', icon: '📉' },
+          { id: 'Customer Service', icon: '📞' },
+          { id: 'Corporate Communications', icon: '📣' },
+          { id: 'Government & External Affairs', icon: '🏛️' },
+          { id: 'Sustainability / ESG', icon: '🌱' },
+          { id: 'Procurement & Administration', icon: '📋' },
+          { id: 'Learning & Development', icon: '🎓' },
+          { id: 'Product Development', icon: '🔧' },
+          { id: 'Actuarial Department', icon: '📐' },
+          { id: 'Reinsurance', icon: '🔄' },
+        ];
+
+        const [expanded, setExpanded] = React.useState(false);
+        const displayedDepartments = expanded ? ALL_DEPARTMENTS : ALL_DEPARTMENTS.slice(0, 5);
+
+        return (
+          <div className="sticky top-20 z-10 border-b border-gray-200 bg-white shadow-sm">
+            <div className="mx-auto max-w-[1800px] px-6 py-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                      {displayedDepartments.map((dept) => (
+                        <button
+                          key={dept.id}
+                          onClick={() => {
+                            setSelectedDepartment && setSelectedDepartment(dept.id);
+                            setMode && setMode('home');
+                            if (expanded) {
+                              setExpanded(false);
+                            }
+                          }}
+                          className={classNames(
+                            'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                            selectedDepartment === dept.id
+                              ? 'bg-primary-600 text-white shadow-md'
+                              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-primary-300'
+                          )}
+                        >
+                          <span className="text-base">{dept.icon}</span>
+                          <span>{dept.id}</span>
+                        </button>
+                      ))}
+                {!expanded && (
+                  <button
+                    onClick={() => setExpanded(true)}
+                    className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-300 transition"
+                  >
+                    <span>▼</span>
+                    <span>Expand</span>
+                  </button>
+                )}
+                {expanded && (
+                  <button
+                    onClick={() => setExpanded(false)}
+                    className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-300 transition"
+                  >
+                    <span>▲</span>
+                    <span>Collapse</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function DepartmentView({ department, tools, onSelectTool, onBack, setMode }) {
+        const DEPT_INFO = {
+          'Distribution & Marketing': { icon: '📢', name: 'Distribution & Marketing Department', desc: 'Manage marketing strategies and distribution channels' },
+          'Risk Management': { icon: '⚠️', name: 'Risk Management Department', desc: 'Analyze risks, model scenarios, and build risk reports' },
+          'Finance / Capital Management': { icon: '💰', name: 'Finance / Capital Management Department', desc: 'Manage financial resources and capital allocation' },
+          'Investment Management': { icon: '📈', name: 'Investment Management Department', desc: 'Manage investment portfolios and strategies' },
+          'Healthcare / Health Business': { icon: '🏥', name: 'Healthcare / Health Business Department', desc: 'Manage healthcare-related business operations' },
+          'Human Resources / People / Culture': { icon: '👥', name: 'Human Resources / People / Culture Department', desc: 'Manage talent acquisition, employee relations, and training' },
+          'Legal & Compliance': { icon: '⚖️', name: 'Legal & Compliance Department', desc: 'Review contracts, ensure compliance, and manage legal risks' },
+          'Technology / Digital / Innovation': { icon: '💻', name: 'Technology / Digital / Innovation Department', desc: 'Drive digital transformation and technology innovation' },
+          'Agency Distribution': { icon: '🏢', name: 'Agency Distribution Department', desc: 'Manage agency-based distribution channels' },
+          'Partnership Distribution': { icon: '🤝', name: 'Partnership Distribution Department', desc: 'Manage partnership-based distribution networks' },
+          'Corporate Solutions': { icon: '💼', name: 'Corporate Solutions Department', desc: 'Provide corporate-level solutions and services' },
+          'Operations / Life Operations': { icon: '⚙️', name: 'Operations / Life Operations Department', desc: 'Manage daily operations and life insurance operations' },
+          'Strategy / Transformation': { icon: '🎯', name: 'Strategy / Transformation Department', desc: 'Drive strategic planning and organizational transformation' },
+          'Internal Audit': { icon: '🔍', name: 'Internal Audit Department', desc: 'Conduct internal audits and compliance reviews' },
+          'Marketing & Products': { icon: '📊', name: 'Marketing & Products Department', desc: 'Develop marketing strategies and product offerings' },
+          'Data Analytics & Reporting': { icon: '📉', name: 'Data Analytics & Reporting Department', desc: 'Analyze data and generate business reports' },
+          'Customer Service': { icon: '📞', name: 'Customer Service Department', desc: 'Provide customer support and service excellence' },
+          'Corporate Communications': { icon: '📣', name: 'Corporate Communications Department', desc: 'Manage internal and external communications' },
+          'Government & External Affairs': { icon: '🏛️', name: 'Government & External Affairs Department', desc: 'Manage government relations and external affairs' },
+          'Sustainability / ESG': { icon: '🌱', name: 'Sustainability / ESG Department', desc: 'Drive sustainability initiatives and ESG compliance' },
+          'Procurement & Administration': { icon: '📋', name: 'Procurement & Administration Department', desc: 'Manage procurement processes and administrative functions' },
+          'Learning & Development': { icon: '🎓', name: 'Learning & Development Department', desc: 'Provide employee training and development programs' },
+          'Product Development': { icon: '🔧', name: 'Product Development Department', desc: 'Develop and enhance insurance products' },
+          'Actuarial Department': { icon: '📐', name: 'Actuarial Department', desc: 'Assess risk factors, evaluate applications, and set premiums' },
+          'Reinsurance': { icon: '🔄', name: 'Reinsurance Department', desc: 'Manage reinsurance operations and relationships' },
+        };
+        const deptInfo = DEPT_INFO[department] || { icon: '🏢', name: department, desc: '' };
+        const [selectedTool, setSelectedTool] = React.useState(null);
+        const [messages, setMessages] = React.useState([]);
+        const [input, setInput] = React.useState('');
+        const [imageFile, setImageFile] = React.useState(null);
+        const [file, setFile] = React.useState(null);
+        const [showAllTools, setShowAllTools] = React.useState(false);
+
+        const scrollRef = React.useRef(null);
+        
+        // Reset conversation state when department changes
+        React.useEffect(() => {
+          setSelectedTool(null);
+          setMessages([]);
+          setInput('');
+          setImageFile(null);
+          setFile(null);
+          setShowAllTools(false);
+        }, [department]);
+        
+        React.useEffect(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        }, [messages]);
+
+        function sendMessage() {
+          const trimmed = input.trim();
+          if (!trimmed && !imageFile && !file) return;
+          
+          if (imageFile) {
+            setMessages(prev => [...prev, { id: 'img' + Date.now(), role: 'user', type: 'image', url: imageFile }]);
+            setImageFile(null);
+          }
+          if (file) {
+            setMessages(prev => [...prev, { id: 'file' + Date.now(), role: 'user', type: 'file', filename: file.name }]);
+            setFile(null);
+          }
+          if (trimmed) {
+            setMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: trimmed }]);
+            setInput('');
+            
+            setTimeout(() => {
+              const reply = {
+                id: 'a' + Date.now(),
+                role: 'assistant',
+                text: selectedTool ? `Response from ${selectedTool.name} (simulated)` : 'Please select a tool to get started.',
+              };
+              setMessages(prev => [...prev, reply]);
+            }, 700);
+          }
+        }
+
+        const Bubble = ({ role, children, type, url, filename }) => (
+          <div
+            className={classNames(
+              "max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-soft",
+              role === "user"
+                ? "ml-auto bg-primary-600 text-white"
+                : "mr-auto bg-white border border-gray-200 text-gray-900"
+            )}
+          >
+            {type === 'image' && url ? (
+              <img src={url} alt="Uploaded" className="max-w-xs rounded-lg" />
+            ) : type === 'file' && filename ? (
+              <div className="flex items-center gap-2">
+                <span>📎</span>
+                <span>{filename}</span>
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap">{children}</div>
+            )}
+          </div>
+        );
+
+        return (
+          <div className="mx-auto max-w-[1400px] px-6 py-6">
+            <button
+              onClick={onBack}
+              className="mb-4 inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            >
+              <span>←</span>
+              <span>Back</span>
+            </button>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[256px_1fr]">
+              <LeftSidebar
+                onSelectTool={(tool) => {
+                  // Handle AI tools selection in department context
+                  setSelectedTool(null);
+                  setMessages([]);
+                }}
+                onCreate={() => {}}
+                onOpenChat={(id) => {
+                  if(id==='new') {
+                    setSelectedTool(null);
+                    setMessages([]);
+                  } else if (id === 'contract-review-q4') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'cr1', role: 'user', text: 'Review this vendor contract for Q4 procurement.', type: 'file', filename: 'Vendor_Agreement_Q4_2024.pdf' },
+                      { id: 'cr2', role: 'assistant', text: '**Contract Review Summary**\n\n**Document:** Vendor_Agreement_Q4_2024.pdf\n\n**Key Findings:**\n- ✅ All clauses comply with company policy\n- ⚠️ Payment terms: Net 45 is acceptable but recommend Net 30\n- ✅ Liability coverage meets requirements\n- ✅ Data protection clause is comprehensive\n\n**Risk Assessment:** Low\n\n**Recommendations:**\n1. Suggest negotiating payment terms to Net 30 for better cash flow\n2. Contract is otherwise ready for signature' }
+                    ]);
+                  } else if (id === 'leave-request-nov') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'lr1', role: 'user', text: 'I need to request 3 days of personal leave in November for family event.' },
+                      { id: 'lr2', role: 'assistant', text: '**Leave Request Submitted**\n\n**Details:**\n- Type: Personal Leave\n- Duration: 3 days\n- Month: November 2024\n- Reason: Family event\n\n**Status:** Pending Manager Approval\n\n**Your Leave Balance:**\n- Personal Days Remaining: 15\n- Annual Leave Remaining: 12\n\n**Next Steps:**\nYour request has been forwarded to your manager for approval. You will receive a notification once approved.' }
+                    ]);
+                  } else if (id === 'premium-calculation') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'pc1', role: 'user', text: 'Calculate premium for life insurance policy: Age 35, non-smoker, $500K coverage, 20-year term.' },
+                      { id: 'pc2', role: 'assistant', text: '**Premium Calculation**\n\n**Policy Details:**\n- Coverage Amount: $500,000\n- Term: 20 years\n- Age: 35\n- Smoking Status: Non-smoker\n\n**Calculated Premium:**\n- Monthly: $42.50\n- Annual: $510.00\n\n**Breakdown:**\n- Base Premium: $38.00/month\n- Risk Adjustment: +$4.50/month (favorable due to non-smoker status)\n\n**Discounts Applied:**\n- Healthy Lifestyle: 5%\n- Auto-pay: 2%\n\n**Note:** Final premium may vary based on medical underwriting results.' }
+                    ]);
+                  } else if (id === 'compliance-audit') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'ca1', role: 'user', text: 'Run compliance audit for Q3 2024 customer data handling procedures.' },
+                      { id: 'ca2', role: 'assistant', text: '**Compliance Audit Report - Q3 2024**\n\n**Audit Scope:** Customer Data Handling Procedures\n\n**Findings:**\n- ✅ GDPR compliance: All procedures meet requirements\n- ✅ Data encryption: Implemented correctly\n- ⚠️ Data retention: Some records exceed recommended retention period\n- ✅ Access controls: Properly configured\n- ✅ Incident response: Procedures documented and tested\n\n**Risk Assessment:** Medium-Low\n\n**Recommendations:**\n1. Review and archive records older than 7 years\n2. Schedule quarterly compliance training update\n3. Update data processing agreement templates\n\n**Overall Status:** Compliant with minor improvements needed' }
+                    ]);
+                  } else if (id === 'policy-translation') {
+                    setSelectedTool(null);
+                    setMessages([
+                      { id: 'pt1', role: 'user', text: 'Translate our customer service policy document to Spanish and French.', type: 'file', filename: 'Customer_Service_Policy_EN.pdf' },
+                      { id: 'pt2', role: 'assistant', text: '**Translation Complete**\n\n**Source:** Customer_Service_Policy_EN.pdf\n**Target Languages:** Spanish, French\n\n**Translations Generated:**\n- ✅ Customer_Service_Policy_ES.pdf (Spanish)\n- ✅ Customer_Service_Policy_FR.pdf (French)\n\n**Translation Quality:** High\n- Legal terminology verified\n- Cultural context adapted\n- Formatting preserved\n\n**Review Status:**\nBoth translations have been reviewed and are ready for distribution. All technical terms and policy numbers have been accurately translated.' }
+                    ]);
+                  } else alert(`Open ${id} (simulated)`);
+                }}
+                onOpenMyAssistant={() => setMode && setMode('builder')}
+                onHelp={() => alert("Help Center (simulated)")}
+                showHistoryOnly={true}
+              />
+              <div className="flex min-h-[70vh] flex-col rounded-2xl border border-gray-200 bg-gray-50 shadow-soft">
+              <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 rounded-t-2xl">
+                <div className="text-sm font-semibold text-gray-900">{deptInfo.name}</div>
+                <div className="flex items-center gap-2"></div>
+              </div>
+              <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+                {selectedTool ? (
+                  messages.length > 0 ? (
+                    <div className="space-y-4">
+                      {messages.map((m) => (
+                        <Bubble key={m.id} role={m.role} type={m.type} url={m.url} filename={m.filename}>{m.text}</Bubble>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[350px] flex-col items-center justify-center text-center select-none">
+                      <div className="mb-7 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 text-5xl shadow-soft">
+                        {selectedTool.icon}
+                      </div>
+                      <div className="text-3xl font-bold text-gray-900 mb-2">{selectedTool.name}</div>
+                      <div className="mb-4 text-base text-gray-600 max-w-md">{selectedTool.desc}</div>
+                      <div className="mt-2 text-xs text-gray-400">Outputs are simulated in this demo.</div>
+                    </div>
+                  )
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center select-none py-8">
+                    {/* Department Introduction Section */}
+                    <div className="mb-8 flex flex-col items-center">
+                      <div className="mb-6 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 text-5xl shadow-soft">
+                        {deptInfo.icon}
+                      </div>
+                      <div className="text-3xl font-bold text-gray-900 mb-2">{deptInfo.name}</div>
+                      <div className="mb-4 text-base text-gray-600 max-w-2xl">{deptInfo.desc}</div>
+                    </div>
+                    
+                    {/* Smaller Tool Buttons Grid */}
+                    <div className="w-full max-w-4xl">
+                      <div className="text-lg font-semibold text-gray-800 mb-4">Suggested agents</div>
+                      <div className="grid grid-cols-4 gap-3">
+                        {(showAllTools ? tools : tools.slice(0, 4)).map((tool) => (
+                          <button
+                            key={tool.id}
+                            onClick={() => setSelectedTool(tool)}
+                            className="group flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-center shadow-soft transition hover:border-primary-300 hover:shadow-md"
+                          >
+                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-50 text-2xl group-hover:bg-primary-100 transition">
+                              {tool.icon}
+                            </div>
+                            <div className="w-full">
+                              <div className="text-sm font-semibold text-gray-900 mb-1 line-clamp-1">{tool.name}</div>
+                              <div className="text-xs text-gray-500 leading-tight line-clamp-2">{tool.desc}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      {tools.length > 4 && !showAllTools && (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            onClick={() => setShowAllTools(true)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 transition"
+                          >
+                            <span>More</span>
+                            <span>▼</span>
+                          </button>
+                        </div>
+                      )}
+                      {showAllTools && tools.length > 4 && (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            onClick={() => setShowAllTools(false)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                          >
+                            <span>Show Less</span>
+                            <span>▲</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {messages.map((m) => (
+                      <Bubble key={m.id} role={m.role} type={m.type} url={m.url} filename={m.filename}>{m.text}</Bubble>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-gray-200 bg-white px-4 py-3 rounded-b-2xl">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                    placeholder={`Message ${deptInfo.name}...`}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-primary-300 focus:outline-none focus:ring-1 focus:ring-primary-200"
+                  />
+                  <label className="cursor-pointer rounded-lg border border-gray-200 bg-white p-2 hover:bg-gray-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const url = URL.createObjectURL(f);
+                        setImageFile(url);
+                      }}
+                    />
+                    <span className="text-lg">🖼️</span>
+                  </label>
+                  <label className="cursor-pointer rounded-lg border border-gray-200 bg-white p-2 hover:bg-gray-50">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setFile({ name: f.name });
+                      }}
+                    />
+                    <span className="text-lg">📎</span>
+                  </label>
+                  <button
+                    onClick={sendMessage}
+                    className="rounded-lg bg-primary-600 px-6 py-2 text-sm font-semibold text-white shadow-soft hover:bg-primary-700"
+                  >
+                    Send
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-gray-400">AI outputs are simulated in this demo.</div>
+              </div>
+            </div>
+            </div>
+          </div>
+        );
+      }
+
+      function OverviewPanel({ assistants, search, setSearch, department, setDepartment }) {
+        const totalReuse = assistants.reduce((acc, a) => acc + a.reuseCount, 0);
+        const avgResp = Math.round(assistants.reduce((acc, a) => acc + a.avgResponseMs, 0) / Math.max(assistants.length, 1));
+        const avgSat = (assistants.reduce((acc, a) => acc + a.satisfaction, 0) / Math.max(assistants.length, 1)).toFixed(2);
+
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+            <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-base font-semibold text-gray-900">Assistant Overview</div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative">
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search assistants..."
+                    className="w-full rounded-lg border-gray-200 bg-white pl-9 pr-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                  />
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
+                </div>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                >
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <StatChip label="Total Assistants" value={assistants.length} />
+              <StatChip label="Total Reuse" value={totalReuse} />
+              <StatChip label="Avg Response" value={`${avgResp} ms`} hint={`Avg Satisfaction ${avgSat}/5`} />
+            </div>
+          </div>
+        );
+      }
+
+      function AssistantCard({ a, onRun, onShare, onEdit, onLogs }) {
+        return (
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-soft transition hover:shadow-md">
+            <div className="flex items-start gap-3">
+              {/* Avatar/Icon on left */}
+              <div className="flex-shrink-0">
+                {a.avatarUrl ? (
+                  <img src={a.avatarUrl} alt={a.name} className="h-14 w-14 rounded-xl object-cover border border-gray-200" />
+                ) : (
+                  <div className="grid h-14 w-14 place-items-center rounded-xl bg-primary-100 text-2xl border border-gray-200">{a.icon}</div>
+                )}
+              </div>
+              {/* Main content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between mb-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base font-semibold text-gray-900 truncate">{a.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{a.description}</div>
+                  </div>
+                  <span className="ml-2 rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-medium text-primary-600 whitespace-nowrap">{a.permissions === 'public' ? 'Public' : a.permissions === 'team' ? 'Team' : 'Private'}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-xs text-gray-400">From {a.department}</div>
+                  <div className="flex items-center gap-3 text-gray-400">
+                    <span className="flex items-center gap-1 text-xs">
+                      <span>👁️</span>
+                      <span>{a.reuseCount}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <span>❤️</span>
+                      <span>{Math.floor(a.reuseCount * 0.3)}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <span>⭐</span>
+                      <span>{Math.floor(a.satisfaction * 20)}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+              <button onClick={() => onRun(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Run</button>
+              <button onClick={() => onShare(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Share</button>
+              <button onClick={() => onEdit(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Edit</button>
+              <button onClick={() => onLogs(a)} className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">Logs</button>
+            </div>
+          </div>
+        );
+      }
+
+      function CardGrid({ assistants, onRun, onShare, onEdit, onLogs }) {
+        if (assistants.length === 0) {
+          return (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
+              No assistants found. Try adjusting filters or create a new one.
+            </div>
+          );
+        }
+        return (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            {assistants.map((a) => (
+              <AssistantCard key={a.id} a={a} onRun={onRun} onShare={onShare} onEdit={onEdit} onLogs={onLogs} />
+            ))}
+          </div>
+        );
+      }
+
+      function AnalyticsPanel({ selected }) {
+        const reuseRate = selected?.reuseRate ?? 0.74;
+        const avgResponseMs = selected?.avgResponseMs ?? 1100;
+        const satisfaction = selected?.satisfaction ?? 4.5;
+        return (
+          <div className="sticky top-20 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+            <div className="text-base font-semibold text-gray-900">Performance</div>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-lg bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Reuse Rate</div>
+                <div className="mt-1 flex items-end justify-between">
+                  <div className="text-xl font-semibold text-gray-900">{Math.round(reuseRate * 100)}%</div>
+                  <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+                    <div className="h-2 bg-primary-500" style={{ width: `${Math.min(100, Math.round(reuseRate * 100))}%` }}></div>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Average Response Time</div>
+                <div className="mt-1 text-xl font-semibold text-gray-900">{avgResponseMs} ms</div>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Satisfaction Score</div>
+                <div className="mt-1 text-xl font-semibold text-gray-900">{satisfaction.toFixed(1)} / 5</div>
+              </div>
+              <div className="rounded-lg border border-gray-100 p-3 text-xs text-gray-500">
+                Analytics reflect internal usage. For deep-dive, open View Logs.
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function Modal({ open, onClose, title, children }) {
+        if (!open) return null;
+        return (
+          <div className="fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/20" onClick={onClose}></div>
+            <div className="absolute inset-0 flex items-start justify-center overflow-auto p-4 sm:p-6">
+              <div className="mt-10 w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-base font-semibold text-gray-900">{title}</div>
+                  <button onClick={onClose} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm hover:bg-gray-50">Close</button>
+                </div>
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function LeftSidebar({ onCreate, onSelectTool, onOpenChat, onOpenMyAssistant, onHelp, showHistoryOnly = false }) {
+        const SectionTitle = ({ children }) => (
+          <div className="mt-3 mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{children}</div>
+        );
+        const Item = ({ children, onClick, indent = false }) => (
+          <button onClick={onClick} className={classNames('flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-gray-50', indent && 'pl-6')}>
+            <span className="text-gray-800">{children}</span>
+          </button>
+        );
+        return (
+          <div className="hidden md:flex md:w-64 md:flex-col md:gap-3">
+            <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-soft">
+              {showHistoryOnly ? (
+                <>
+                  <SectionTitle>History</SectionTitle>
+                  <Item indent onClick={() => onOpenChat('contract-review-q4')}>Q4 Contract Review</Item>
+                  <Item indent onClick={() => onOpenChat('leave-request-nov')}>Leave Request - Nov</Item>
+                  <Item indent onClick={() => onOpenChat('premium-calculation')}>Premium Calculation</Item>
+                  <Item indent onClick={() => onOpenChat('compliance-audit')}>Compliance Audit</Item>
+                  <Item indent onClick={() => onOpenChat('policy-translation')}>Policy Translation</Item>
+                </>
+              ) : (
+                <>
+                  <div className="relative">
+                    <input placeholder="Search" className="w-full rounded-lg border-gray-200 bg-white pl-8 pr-3 py-1.5 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" />
+                    <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
+                  </div>
+                  <SectionTitle>Personal Agent</SectionTitle>
+                  <button
+                    onClick={() => onCreate && onCreate()}
+                    className="w-full flex items-center gap-2 rounded-lg bg-primary-600 text-white text-sm py-2 px-3 mb-2 shadow-soft hover:bg-primary-700 transition focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  >
+                    <span className="inline-block text-base">＋</span>
+                    <span>Create Personal Assistant</span>
+                  </button>
+                  <Item indent onClick={() => onOpenChat('custom-1')}>My Customize Assistant 1</Item>
+                  <Item indent onClick={() => onOpenChat('custom-2')}>My Customize Assistant 2</Item>
+                  <Item indent onClick={() => onOpenChat('custom-3')}>My Customize Assistant 3</Item>
+                  <SectionTitle>AI tools</SectionTitle>
+                  <Item indent onClick={() => onSelectTool({ id: 'contract-review', name: 'Contract Review & Compliance Check' })}>Contract Review & Compliance Check</Item>
+                  <Item indent onClick={() => onSelectTool({ id: 'data-summary', name: 'Data Summary Agent' })}>Data Summary Agent</Item>
+                  <Item indent onClick={() => onSelectTool({ id: 'learning-research', name: 'Learning & Research Assistant' })}>Learning & Research Assistant</Item>
+                  <Item indent onClick={() => onSelectTool({ id: 'multilingual-translation', name: 'Multilingual Translation Agent' })}>Multilingual Translation Agent</Item>
+                  <Item indent onClick={() => onSelectTool({ id: 'speech-script', name: 'Speech Script Generator' })}>Speech Script Generator</Item>
+                  <SectionTitle>History</SectionTitle>
+                  <Item indent onClick={() => onOpenChat('chat-1')}>Claim Review Request</Item>
+                  <Item indent onClick={() => onOpenChat('chat-2')}>Document Translation</Item>
+                  <Item indent onClick={() => onOpenChat('contract-review-q4')}>Q4 Contract Review</Item>
+                  <Item indent onClick={() => onOpenChat('leave-request-nov')}>Leave Request - Nov</Item>
+                  <Item indent onClick={() => onOpenChat('premium-calculation')}>Premium Calculation</Item>
+                  <Item indent onClick={() => onOpenChat('compliance-audit')}>Compliance Audit</Item>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function HomeView({ assistants, onCreate, onSelectTool, setMode }) {
+        // null means "My Assistant". Otherwise, {id, name, icon}
+        const [selectedTool, setSelectedTool] = React.useState(null);
+        const [messages, setMessages] = React.useState([]);
+        const [input, setInput] = React.useState("");
+
+        // Handlers for sidebar
+        function handleSelectTool(tool) {
+          setSelectedTool(tool);
+          setMessages([]); // Optionally reset chat per tool
+        }
+        function handleNewChat() {
+          setSelectedTool(null);
+          setMessages([]);
+        }
+        function handleHistoryChat(chatId) {
+          setSelectedTool(null);
+          if (chatId === 'chat-1') {
+            setMessages([
+              { id: 'c1u', role: 'user', text: 'Review the attached claim file.' },
+              { id: 'c1a', role: 'assistant', text: 'Claim Review Summary:\n- Incident: Water damage to kitchen\n- Date: 2025-10-20\n- Amount: $3,200\n- Notes: Photos and plumber report received. No prior claims.\nAssessment: Approved, covered under policy with no exclusions.' }
+            ]);
+          } else if (chatId === 'chat-2') {
+            setMessages([
+              { id: 'c2u', role: 'user', text: 'Translate this document into Spanish.' },
+              { id: 'c2a', role: 'assistant', text: 'Traducción al español:\nEstimado asegurado,\nHemos recibido su reclamación y estamos revisando los detalles. Por favor, proporcione cualquier documento adicional si es necesario.\nAtentamente,\nEquipo de Seguros' }
+            ]);
+          }
+        }
+        // Pass these down
+
+        // Send message: update tool-specific reply simulation
+        function sendMessage() {
+          const trimmed = input.trim();
+          if (!trimmed) return;
+          const userMsg = { id: "u" + Date.now(), role: "user", text: trimmed };
+          setMessages((prev) => [...prev, userMsg]);
+          setInput("");
+          setTimeout(() => {
+            let replyText = "Simulated response.";
+            if (selectedTool?.id === 'contract-review') replyText = 'Contract reviewed: 2 compliance issues flagged. See summary above.';
+            else if (selectedTool?.id === 'data-summary') replyText = 'Summary done: Key metrics and findings extracted. See data panel.';
+            else if (selectedTool?.id === 'learning-research') replyText = 'Research results: See references and links below.';
+            else if (selectedTool?.id === 'multilingual-translation') replyText = 'Translated output: Voici la traduction, 这是翻译。';
+            else if (selectedTool?.id === 'speech-script') replyText = 'Generated script: [Engaging, client-ready speech here]';
+            else replyText = "Simulated response: I would draft steps or run the relevant tool.";
+            const reply = {
+              id: "a" + Date.now(),
+              role: "assistant",
+              text: replyText,
+            };
+            setMessages((prev) => [...prev, reply]);
+          }, 700);
+        }
+
+        const Bubble = ({ role, children }) => (
+          <div
+            className={classNames(
+              "max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-soft",
+              role === "user"
+                ? "ml-auto bg-primary-600 text-white"
+                : "mr-auto bg-white border border-gray-200 text-gray-900"
+            )}
+          >
+            <div className="whitespace-pre-wrap">{children}</div>
+          </div>
+        );
+
+        // Tool intro info (icon, label, description per tool)
+        const TOOL_INFO = {
+          'contract-review': {
+            icon: "📄",
+            label: "Contract Review & Compliance Check",
+            desc: "Review legal contracts, check compliance requirements, and flag key clauses or risks instantly.",
+          },
+          'data-summary': {
+            icon: "📊",
+            label: "Data Summary Agent",
+            desc: "Summarize data tables, files, or lengthy documents—get concise briefs and actionable insights in seconds.",
+          },
+          'learning-research': {
+            icon: "🔎",
+            label: "Learning & Research Assistant",
+            desc: "Ask questions, explore new topics, and organize findings for your ongoing research or training needs.",
+          },
+          'multilingual-translation': {
+            icon: "🌐",
+            label: "Multilingual Translation Agent",
+            desc: "Translate documents, chats, or entire knowledge bases quickly across dozens of languages, with compliant tone.",
+          },
+          'speech-script': {
+            icon: "🗣️",
+            label: "Speech Script Generator",
+            desc: "Generate persuasive, human-like scripts for calls, pitches, or presentations tailored to any scenario.",
+          },
+        };
+
+        return (
+          <div className="mx-auto max-w-[1400px] px-6 py-6">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[256px_1fr]">
+              <LeftSidebar
+                onSelectTool={handleSelectTool}
+                onCreate={onCreate}
+                onOpenChat={(id) => {
+                  if(id==='new') handleNewChat();
+                  else if (id === 'chat-1' || id === 'chat-2' || id === 'contract-review-q4' || id === 'leave-request-nov' || id === 'premium-calculation' || id === 'compliance-audit' || id === 'policy-translation') handleHistoryChat(id);
+                  else alert(`Open ${id} (simulated)`);
+                }}
+                onOpenMyAssistant={() => setMode('builder')}
+                onHelp={() => alert("Help Center (simulated)")}
+              />
+              <div className="flex min-h-[70vh] flex-col rounded-2xl border border-gray-200 bg-gray-50 shadow-soft">
+                  <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 rounded-t-2xl">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {selectedTool
+                      ? TOOL_INFO[selectedTool.id]?.label || selectedTool.name
+                      : "General Assistant"}
+                  </div>
+                  <div className="flex items-center gap-2"></div>
+                </div>
+                  <div className="flex-1 overflow-y-auto px-4 py-4">
+                    {selectedTool ? (
+                      // Show AI tool intro section if a tool is selected
+                      <div className="flex h-full min-h-[350px] flex-col items-center justify-center text-center select-none">
+                        <div className="mb-7 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 text-5xl shadow-soft">
+                          {TOOL_INFO[selectedTool.id]?.icon || "🤖"}
+                        </div>
+                        <div className="text-3xl font-bold text-gray-900 mb-2">{TOOL_INFO[selectedTool.id]?.label || selectedTool.name}</div>
+                        <div className="mb-4 text-base text-gray-600 max-w-md">{TOOL_INFO[selectedTool.id]?.desc || "Interact with this AI-powered tool."}</div>
+                        <div className="mt-2 text-xs text-gray-400">Outputs are simulated in this demo.</div>
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="flex h-full min-h-[350px] flex-col items-center justify-center text-center select-none">
+                        <div className="mb-7 flex items-center justify-center h-20 w-20 rounded-2xl bg-primary-50 text-5xl shadow-soft">🤖</div>
+                        <div className="text-3xl font-bold text-gray-900 mb-2">General Assistant</div>
+                        <div className="mb-4 text-base text-gray-600 max-w-md">Ask me anything. I'm your general assistant and I can guide you through AIA Copilot.<br/>Start a conversation below.</div>
+                        <div className="mt-2 text-xs text-gray-400">All your chats and agents are private unless shared.</div>
+                      </div>
+                    ) : (
+                      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+                        {messages.map((m) => (
+                          <Bubble key={m.id} role={m.role}>{m.text}</Bubble>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                <div className="border-t border-gray-200 bg-white p-3 rounded-b-2xl">
+                  {/* File input logic */}
+                  {(() => {
+                    const [picture, setPicture] = React.useState(null);
+                    const [file, setFile] = React.useState(null);
+                    // Helper: clear selected file
+                    function removeAttachment(type) {
+                      if(type==='picture') setPicture(null);
+                      else if(type==='file') setFile(null);
+                    }
+                    // Keep these refs to access the element
+                    const picInputRef = React.useRef();
+                    const fileInputRef = React.useRef();
+
+                    // Parent handles text input
+                    return (
+                      <React.Fragment>
+                        <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
+                          <textarea
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            rows={1}
+                            placeholder={selectedTool ? `Message ${TOOL_INFO[selectedTool.id]?.label || selectedTool.name}...` : "Message Template-Based Assistant..."}
+                            className="max-h-40 flex-1 resize-none rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                sendMessage();
+                              }
+                            }}
+                          />
+                          <button title="Attach Picture" type="button"
+                            className="rounded-lg bg-white border border-gray-200 p-2 text-xl hover:bg-primary-50"
+                            onClick={() => picInputRef.current && picInputRef.current.click()}
+                          >
+                            <span role="img" aria-label="image">🖼️</span>
+                          </button>
+                          <input type="file" accept="image/*" ref={picInputRef} style={{display:'none'}}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if(!f) return;
+                              const url = URL.createObjectURL(f);
+                              setPicture({ name: f.name, url });
+                              // clear file input value for repeat upload
+                              e.target.value = '';
+                            }}
+                          />
+                          <button title="Attach File" type="button"
+                            className="rounded-lg bg-white border border-gray-200 p-2 text-xl hover:bg-primary-50"
+                            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                          >
+                            <span role="img" aria-label="file">📎</span>
+                          </button>
+                          <input type="file" ref={fileInputRef} style={{display:'none'}}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if(!f) return;
+                              setFile({ name: f.name });
+                              e.target.value = '';
+                            }}
+                          />
+                          <button
+                            onClick={sendMessage}
+                            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+                          >
+                            Send
+                          </button>
+                        </div>
+                        {/* Uploaded preview/info */}
+                        <div className="mx-auto w-full max-w-3xl text-[13px] mt-2 flex gap-4 flex-wrap items-center">
+                          {picture && (
+                            <div className="flex items-center gap-2 border border-primary-100 bg-primary-50 px-3 py-1.5 rounded-lg">
+                              <img src={picture.url} alt="preview" className="h-8 w-8 object-cover rounded border border-gray-300" />
+                              <span className="truncate max-w-[120px] text-gray-700">{picture.name}</span>
+                              <button onClick={()=>removeAttachment('picture')} className="ml-1 text-sm text-primary-600 hover:underline">Remove</button>
+                            </div>
+                          )}
+                          {file && (
+                            <div className="flex items-center gap-2 border border-gray-100 bg-gray-50 px-3 py-1.5 rounded-lg">
+                              <span className="text-[18px]">📎</span>
+                              <span className="truncate max-w-[120px] text-gray-700">{file.name}</span>
+                              <button onClick={()=>removeAttachment('file')} className="ml-1 text-sm text-primary-600 hover:underline">Remove</button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="mx-auto w-full max-w-3xl text-[11px] text-gray-500 mt-2">AI outputs are simulated in this demo.</div>
+                      </React.Fragment>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function Wizard({ onSave }) {
+        const [basic, setBasic] = useState({ name: '', description: '' });
+        const [permissions, setPermissions] = useState('private');
+        const [introduction, setIntroduction] = useState('');
+        const [opening, setOpening] = useState('');
+        const [avatarUrl, setAvatarUrl] = useState('');
+        // Insurance industry knowledge base (EN)
+        const ALL_KB = [
+          'Underwriting Policy Knowledge Base',
+          'Claims Case Knowledge Base',
+          'Clause & Regulatory Reference Base',
+          'Customer FAQ Knowledge Base',
+          'Product Information Repository',
+          'Medical Provider Directory',
+          'Anti-Money Laundering Compliance Database',
+        ];
+        const [knowledgeBases, setKnowledgeBases] = useState([]); // 数组
+        // All fields are regular useState-controlled inputs now (no pulse or auto-type)
+
+        function handleSave() {
+          const newAssistant = {
+            id: 'a' + Math.random().toString(36).slice(2, 8),
+            icon: avatarUrl ? '' : '🤖',
+            avatarUrl: avatarUrl || undefined,
+            name: basic.name || 'Untitled Agent',
+            department: 'Claims',
+            description: basic.description || 'Assistant',
+            introduction: introduction || undefined,
+            opening: opening || '',
+            knowledgeBases: knowledgeBases || [],
+            lastUsed: new Date().toISOString().slice(0, 10),
+            reuseCount: 0,
+            permissions,
+            satisfaction: 4.5,
+            avgResponseMs: 1100,
+            reuseRate: 0.5,
+          };
+          onSave(newAssistant);
+          setBasic({ name: '', description: '' });
+          setPermissions('private');
+          setIntroduction('');
+          setOpening('');
+          setAvatarUrl('');
+          setKnowledgeBases([]);
+        }
+
+        const isValid = basic.name.trim().length > 0;
+
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+            <div className="flex flex-col items-center">
+              <div className="text-sm font-semibold text-gray-900">Create New Agent</div>
+              <div className="mt-3 flex flex-col items-center">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="avatar preview" className="h-16 w-16 rounded-xl object-cover border border-gray-200" />
+                ) : (
+                  <div className="grid h-16 w-16 place-items-center rounded-xl bg-gray-100 text-2xl">🤖</div>
+                )}
+                <div className="mt-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm shadow-soft hover:bg-gray-50">
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setAvatarUrl(String(ev.target?.result || ''));
+                      reader.readAsDataURL(file);
+                    }} />
+                    <span>Upload Avatar</span>
+                  </label>
+                  {avatarUrl && (
+                    <button onClick={() => setAvatarUrl('')} className="ml-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50">Remove</button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3">
+              <div>
+                <label className="text-xs text-gray-500">Name</label>
+                <input
+                  value={basic.name}
+                  onChange={(e) => setBasic({ ...basic, name: e.target.value })}
+                  className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200"
+                  placeholder="e.g., Clause Interpreter"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Description</label>
+                <textarea value={basic.description} onChange={(e) => setBasic({ ...basic, description: e.target.value })} rows={3} className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" placeholder="What does this agent do?" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Opening (first sentence assistant says)</label>
+                <textarea value={opening} onChange={(e) => setOpening(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" placeholder="Hi, how can I help you today?" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Visibility</label>
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  {['private', 'public'].map((p) => (
+                    <button key={p} onClick={() => setPermissions(p)} className={classNames('rounded-xl border p-3 text-left shadow-soft hover:bg-gray-50', permissions === p ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white')}>
+                      <div className="text-sm font-semibold capitalize text-gray-900">{p}</div>
+                      <div className="mt-1 text-xs text-gray-600">{p === 'private' ? 'Only you' : 'All employees'}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Introduction (note)</label>
+                <textarea value={introduction} onChange={(e) => setIntroduction(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm shadow-soft focus:border-primary-300 focus:ring-primary-200" placeholder="Short intro or SOP note for collaborators" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold mb-1 block">Knowledge Bases <span className="text-gray-400 font-normal">(choose any relevant sources)</span></label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                  {ALL_KB.map(kb => (
+                    <label key={kb} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-400"
+                        checked={knowledgeBases.includes(kb)}
+                        onChange={e => {
+                          setKnowledgeBases(v => (
+                            e.target.checked
+                              ? [...v, kb]
+                              : v.filter(x => x !== kb)
+                          ));
+                        }}
+                      />
+                      <span>{kb}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button onClick={() => { setBasic({ name: '', description: '' }); setPermissions('private'); setIntroduction(''); setOpening(''); setAvatarUrl(''); setKnowledgeBases([]); }} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 hover:bg-gray-50">Reset</button>
+              <button onClick={handleSave} disabled={!isValid} className={classNames('rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-soft', isValid ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300')}>Save Agent</button>
+            </div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [assistants, setAssistants] = useState(INITIAL_ASSISTANTS);
+        const [search, setSearch] = useState('');
+        const [department, setDepartment] = useState('All');
+        const [headerDepartment, setHeaderDepartment] = useState(null);
+        const [showWizard, setShowWizard] = useState(false);
+        const [agentMode, setAgentMode] = useState('personal');
+        const [selected, setSelected] = useState(null);
+        const [mode, setMode] = useState('home');
+
+        // Generate deterministic random number of tools for each department (6-12 tools) based on deptId hash
+        function generateToolsForDepartment(deptId, baseTools = []) {
+          // Create a simple hash from deptId to get consistent random number per department
+          let hash = 0;
+          for (let i = 0; i < deptId.length; i++) {
+            hash = ((hash << 5) - hash) + deptId.charCodeAt(i);
+            hash = hash & hash; // Convert to 32-bit integer
+          }
+          const toolCount = 6 + (Math.abs(hash) % 7); // 6-12 tools, consistent per department
+          if (baseTools.length >= toolCount) {
+            return baseTools;
+          }
+          const additionalTools = [];
+          const toolTypes = ['Inquiry', 'Request', 'Support', 'Resources', 'Report', 'Analysis', 'Review', 'Guide', 'Calculator', 'Generator', 'Tracker', 'Planner'];
+          const icons = ['📝', '📋', '💬', '📚', '📊', '📈', '📑', '📖', '💳', '🔧', '✅', '⚙️'];
+          
+          for (let i = baseTools.length; i < toolCount; i++) {
+            const toolIndex = i % toolTypes.length;
+            additionalTools.push({
+              id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-${toolTypes[toolIndex].toLowerCase()}-${i}`,
+              name: `${toolTypes[toolIndex]}`,
+              icon: icons[i % icons.length],
+              desc: `${toolTypes[toolIndex]} service from ${deptId}`,
+            });
+          }
+          return [...baseTools, ...additionalTools];
+        }
+
+        // Default tools for departments that don't have specific tools defined
+        function getDefaultTools(deptId) {
+          return generateToolsForDepartment(deptId, [
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-inquiry`, name: 'Inquiry', icon: '📝', desc: 'Get information and assistance from this department' },
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-request`, name: 'Service Request', icon: '📋', desc: 'Submit a service request to this department' },
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-support`, name: 'Support', icon: '💬', desc: 'Get support and guidance from this department' },
+            { id: `${deptId.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-')}-resources`, name: 'Resources', icon: '📚', desc: 'Access resources and materials from this department' },
+          ]);
+        }
+
+        // Department tools configuration - tools serve employees from other departments
+        const DEPARTMENT_TOOLS = {
+          'Human Resources / People / Culture': generateToolsForDepartment('HR', [
+            { id: 'leave-request', name: 'Leave Request', icon: '🏖️', desc: 'Submit and manage your leave requests' },
+            { id: 'expense-claim', name: 'Expense Claim', icon: '💳', desc: 'Submit and track your business expense claims' },
+            { id: 'benefits-inquiry', name: 'Benefits Inquiry', icon: '🎁', desc: 'Get information about employee benefits and entitlements' },
+            { id: 'payroll-inquiry', name: 'Payroll Inquiry', icon: '💵', desc: 'Check your payslips and payroll information' },
+          ]),
+          'Legal & Compliance': generateToolsForDepartment('Legal', [
+            { id: 'contract-review', name: 'Contract Review', icon: '📑', desc: 'Review contracts and legal documents before signing' },
+            { id: 'compliance-check', name: 'Compliance Check', icon: '✅', desc: 'Check if your activities comply with regulations' },
+            { id: 'legal-advice', name: 'Legal Advice', icon: '💼', desc: 'Get legal guidance on workplace matters' },
+            { id: 'document-drafting', name: 'Document Drafting', icon: '✍️', desc: 'Help draft legal documents and agreements' },
+          ]),
+          'Risk Management': generateToolsForDepartment('Risk Management', [
+            { id: 'risk-assessment', name: 'Risk Assessment', icon: '⚠️', desc: 'Assess risks for your projects or activities' },
+            { id: 'incident-reporting', name: 'Incident Reporting', icon: '🚨', desc: 'Report workplace incidents and safety concerns' },
+            { id: 'compliance-guidance', name: 'Compliance Guidance', icon: '📖', desc: 'Get guidance on risk and compliance requirements' },
+            { id: 'safety-training', name: 'Safety Training', icon: '🛡️', desc: 'Access safety training materials and resources' },
+          ]),
+          'Finance / Capital Management': generateToolsForDepartment('Finance', [
+            { id: 'policy-inquiry', name: 'Policy Inquiry', icon: '📄', desc: 'Get information about your insurance policies' },
+            { id: 'premium-calculator', name: 'Premium Calculator', icon: '💳', desc: 'Calculate insurance premiums for new coverage' },
+            { id: 'coverage-request', name: 'Coverage Request', icon: '📋', desc: 'Request new coverage or modify existing policies' },
+            { id: 'policy-comparison', name: 'Policy Comparison', icon: '⚖️', desc: 'Compare different policy options and coverage levels' },
+          ]),
+        };
+
+        const filtered = useMemo(() => {
+          const term = search.trim().toLowerCase();
+          return assistants.filter((a) => {
+            const matchesDept = department === 'All' || a.department === department;
+            const matchesTerm = !term || `${a.name} ${a.description} ${a.department}`.toLowerCase().includes(term);
+            return matchesDept && matchesTerm;
+          });
+        }, [assistants, search, department]);
+
+        function handleSaveAssistant(newAssistant) {
+          setAssistants([newAssistant, ...assistants]);
+          setShowWizard(false);
+          setSelected(newAssistant);
+        }
+
+        function fakeToast(msg) {
+          alert(msg);
+        }
+
+        return (
+          <div>
+            <Header onCreate={() => setShowWizard(true)} mode={mode} setMode={setMode} selectedDepartment={headerDepartment} setSelectedDepartment={setHeaderDepartment} agentMode={agentMode} setAgentMode={setAgentMode} />
+            {agentMode === 'department' && (
+              <DepartmentBar selectedDepartment={headerDepartment} setSelectedDepartment={setHeaderDepartment} setMode={setMode} />
+            )}
+            {mode === 'home' ? (
+              agentMode === 'department' && headerDepartment ? (
+                <DepartmentView
+                  department={headerDepartment}
+                  tools={(DEPARTMENT_TOOLS[headerDepartment] || getDefaultTools(headerDepartment))}
+                  onSelectTool={(tool) => {
+                    // Handle tool selection - could navigate to a tool page or start a conversation
+                    alert(`Selected ${tool.name} tool for ${headerDepartment}`);
+                  }}
+                  onBack={() => setHeaderDepartment(null)}
+                  setMode={setMode}
+                />
+              ) : (
+                <HomeView
+                  assistants={assistants}
+                  onCreate={() => setShowWizard(true)}
+                  onSelectTool={(t) => { setShowWizard(true); }}
+                  setMode={setMode}
+                />
+              )
+            ) : (
+              <div className="mx-auto max-w-[1400px] px-6 py-6">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="text-base font-semibold text-gray-900">Assistants</div>
+                    <div className="text-xs text-gray-500">Showing {filtered.length} of {assistants.length}</div>
+                  </div>
+                  <CardGrid
+                    assistants={filtered}
+                    onRun={(a) => { setSelected(a); fakeToast(`Running \"${a.name}\"... (simulated)`); }}
+                    onShare={(a) => { setSelected(a); fakeToast(`Share dialog for \"${a.name}\" (simulated)`); }}
+                    onEdit={(a) => { setShowWizard(true); setSelected(a); fakeToast(`Open wizard to edit \"${a.name}\" (simulated)`); }}
+                    onLogs={(a) => { setSelected(a); fakeToast(`Viewing logs for \"${a.name}\" (simulated)`); }}
+                  />
+                </div>
+              </div>
+            )}
+            <Modal open={showWizard} onClose={() => setShowWizard(false)} title="Create New Agent">
+              <Wizard onSave={handleSaveAssistant} />
+            </Modal>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+  </html>
+
+
